@@ -1,21 +1,16 @@
-import time
-from datetime import date
-import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.firefox.service import Service as FirefoxService
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.firefox.options import Options
-
-from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-
-import pymysql
-
 # CONVERSÃO DE DECIMAIS (',' para '.')
 import locale
+import time
+from datetime import date
+
+import pandas as pd
+import pymysql
+from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
 locale.setlocale(locale.LC_ALL, '')
 
 # INICIANDO CONEXÃO COM O BANCO DE DADOS
@@ -114,13 +109,10 @@ def coletaReview(asin, site):
     try:
         sql = 'insert into teste.tbl_avaliacoes (site, asin, titulo, texto, nota, autor, date) values (%s, %s, %s, %s, %s, %s, %s)'
         cursor.executemany(sql, product_review)
+        print(f"Avaliações do produto {asin} inseridas")
     except pymysql.Error as e:
         mydb.rollback()
         print(e)
-    finally:
-        # cursor.close()
-        # mydb.close()
-        print(f"Avaliações do produto {asin} inseridas")
 
     # SALVANDO AS LISTAS EM DF
     return pd.DataFrame(data=product_review,
@@ -132,16 +124,19 @@ def coletaDetalhes(asin, site):
     driver.get(url)
 
     pag = WebDriverWait(driver, 3).until(
-            EC.presence_of_element_located((By.ID, 'dp')))
+            EC.presence_of_element_located((By.ID, 'ppd')))
     try:
         driver.find_element(By.ID, "sp-cc-rejectall-link").click()
     except NoSuchElementException:
         pass
 
     try:
-        marca = pag.find_element(By.ID, 'bylineInfo').text.strip()
+        marca = pag.find_element(By.ID, 'BylineInfo').text.strip()
     except NoSuchElementException:
-        marca = pag.find_element(By.ID, 'bylineInfo_feature_div').text.strip()
+        try:
+            marca = pag.find_element(By.ID, 'bylineInfo_feature_div').text.strip()
+        except NoSuchElementException:
+            marca = ""
 
     nome = pag.find_element(By.ID, 'productTitle').text.strip()
 
@@ -199,13 +194,13 @@ def coletaDetalhes(asin, site):
     try:
         sql = 'insert into teste.tbl_detalhes (site, asin, nome, marca, tag, overview, features, details, description, information, documents) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
         cursor.execute(sql, (site, asin, nome, marca, tag, overview, features, details, description, information, documents))
+        print(f"Detalhes do produto {asin} inseridos")
     except pymysql.Error as e:
         mydb.rollback()
         print(e)
     # finally:
     #     # cursor.close()
     #     # mydb.close()
-    #     print(f"Detalhes do produto {asin} inseridos")
 
     return pd.DataFrame(data=[[site, asin, nome, marca, tag, overview, features, details, description, information, documents]],
                        columns=['site', 'asin', 'nome', 'marca', 'tag', 'overview', 'features', 'details', 'description', 'information', 'documents'])
@@ -248,33 +243,30 @@ def coletaElemento(palavra_chave, site):
             EC.presence_of_all_elements_located((By.XPATH, '//div[contains(@class, "s-result-item s-asin")]')))
 
         for item in items:
-
             name = item.find_element('xpath', './/span[@class="a-size-base-plus a-color-base a-text-normal"]').text
 
             try:
-                auxpatrocinio = item.find_element(by.class_name, "puis-label-popover-default")
-            except nosuchelementexception:
-                auxpatrocinio = false
-
-            if auxpatrocinio:
-                name = name + " (propaganda)"
+                item.find_element('class name', "puis-label-popover-default")
+                name = name + " (PROPAGANDA)"
+            except NoSuchElementException:
+                pass
 
             data_asin = item.get_attribute("data-asin")
 
-            # DESMEMBRANDO PREÇO (INCLUIR SÍMBOLO TBM?)
-            whole_price = item.find_elements(by.xpath, './/span[@class="a-price-whole"]')
-            fraction_price = item.find_elements(by.xpath,'.//span[@class="a-price-fraction"]')
+            # DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
+            whole_price = item.find_elements('xpath', './/span[@class="a-price-whole"]')
+            fraction_price = item.find_elements('xpath', './/span[@class="a-price-fraction"]')
             if whole_price and fraction_price:
-                price = ','.join([whole_price[0].text, fraction_price[0].text])
+                price = locale.atof(','.join([whole_price[0].text, fraction_price[0].text]))
             else:
-                price = 0
-            price = locale.atof(price)
+                price = 0.0
 
             # DESMEMBRANDO A AVALIAÇÃO
             ratings_box = item.find_elements('xpath', './/div[@class="a-row a-size-small"]/span')
             if ratings_box:
+                # ADAPTA OS PONTOS E VIRGULAS NOS NÚMEROS
                 ratings = locale.atof(ratings_box[0].get_attribute('aria-label').split()[0])
-                ratings_num = ratings_box[1].get_attribute('aria-label')
+                ratings_num = locale.atoi(ratings_box[1].get_attribute('aria-label'))
             else:
                 ratings, ratings_num = 0.0, 0
 
@@ -282,56 +274,43 @@ def coletaElemento(palavra_chave, site):
             link = item.find_element('xpath', './/a[@class="a-link-normal s-no-outline"]').get_attribute("href")
 
             # LINK DA IMAGEM -> DEPOIS BAIXAR O ARQUIVO
-            img = item.find_element(by.class_name, "s-image").get_attribute("src")
+            img = item.find_element('class name', "s-image").get_attribute("src")
 
-            # print the extracted information
-            # print("nome produto: ", name.text)
-            # print("asin: ", data_asin)
-            # print("preço: ", price)
-            # print("nota: ", ratings)
-            # print("num de avaliações: ", ratings_num)
-            # print("link: ", link)
-            # print("imagem: ", img)
-            # print("\n")
-
+            #INSERÇÃO NO BANCO DE DADOS
             try:
-                auxmusica = "mp3" in item.find_element(by.xpath, ".//a[@class='a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold']").text.strip()
-            except nosuchelementexception:
-                auxmusica = false
-            if auxmusica:
-                name = name + " (amazon music)"
-            else:
-                product_descr = pd.concat([product_descr, coletadetalhes(data_asin, site)], ignore_index=true)
+                #VERIFICAR SE JÁ EXISTE??
+                sql = 'insert into teste.tbl_produtos (site, asin, nome, preco, nota, num_avaliacoes, img, link) values (%s, %s, %s, %s, %s, %s, %s, %s)'
+                cursor.execute(sql, (site, data_asin, name, price, ratings, ratings_num, img, link))
+                print(f"Produto {data_asin} inserido")
+            except pymysql.Error as e:
+                mydb.rollback()
+                print(e)
 
-            # pegando avaliações dos produtos que possuem avaliação
-            if ratings_num != 0 and ratings_num != "none": #### trocar pra pegar avalições com análise (como checar?) , esse aqui verifica só a qtde notas
-                avaliacoes = pd.concat([avaliacoes, coletareview(data_asin, site)], ignore_index=true)
+            #ACESSANDO PÁGINA DO PRODUTO, EXCETO SE FOR AMAZON MUSIC
+            #DENTRO DA FUNÇÃO FAZ A INSERÇÃO NO BANCO
+            try:
+                "mp3" in item.find_element('xpath', ".//a[@class='a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold']").text.strip()
+                name = name + " (AMAZON MUSIC)"
+            except NoSuchElementException:
+                product_descr = pd.concat([product_descr, coletaDetalhes(data_asin, site)], ignore_index=True)
+
+            #ACESSANDO PÁGINA DE AVALIAÇÃO DO PRODUTO (SE HOUVER - SE FOR O CASO DE TER AVALIAÇÃO MAS SEM COMENTÁRIO, VAI SÓ ABRIR E FECHAR)
+            #DENTRO DA FUNÇÃO FAZ A INSERÇÃO NO BANCO
+            if ratings_num > 0: #### trocar pra pegar avalições com análise (como checar?) , esse aqui verifica só a qtde notas
+                avaliacoes = pd.concat([avaliacoes, coletaReview(data_asin, site)], ignore_index=True)
                 # print("ok")
             # else:
             #     print("sem avaliações\n")
 
-            # salvando as listas em df -> depois otimizar pra já salvar direto em df
+            # SALVANDO NO DATAFRAME
             product = pd.concat(
-                [product, pd.dataframe(data=[[site, data_asin, name, price, ratings, ratings_num, img, link]],
+                [product, pd.DataFrame(data=[[site, data_asin, name, price, ratings, ratings_num, img, link]],
                                        columns=['site', 'asin', 'name', 'price', 'ratings', 'ratings_num', 'img', 'link'])],
-                ignore_index=true)
+                ignore_index=True)
+            mydb.commit()
+
         # for i in product_asin:
         #    coletaReview(i)
-
-        try:
-            sql = 'insert into teste.tbl_produtos (site, asin, nome, preco, nota, num_avaliacoes, img, link) values (%s, %s, %s, %s, %s, %s, %s, %s)'
-            cursor.execute(sql, (site, data_asin, name, price, ratings, ratings_num, img, link))
-            # sql = 'insert into teste.tbl_detalhes (site, asin, nome, marca, tag, overview, features, details, description, information, documents) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-            # cursor.executemany(sql, tuple(product_descr.iloc))
-            # sql = 'insert into teste.tbl_avaliacoes (site, asin, titulo, texto, nota, autor) values (%s, %s, %s, %s, %s, %s)'
-            # cursor.execute(sql, tuple(avaliacoes.iloc[item]))
-        except pymysql.Error as e:
-            mydb.rollback()
-            print(e)
-        finally:
-            # cursor.close()
-            # mydb.close()
-            print("Dados inseridos")
 
         # IR PRA PRÓXIMA PÁGINA (SE HOUVER)
         try:
@@ -340,8 +319,11 @@ def coletaElemento(palavra_chave, site):
             break
         # paginacao.find_element(By.CLASS_NAME, "s-pagination-next").click()
     # SALVANDO TUDO NO BANCO DE DADOS
-    mydb.commit()
+    cursor.close()
+    mydb.close()
     driver.close()
+
+
 
     # final = product.merge(product_descr, on='asin', how='left')
 
@@ -359,7 +341,7 @@ def coletaElemento(palavra_chave, site):
 palavra_chave = "buttermilk"
 
 #### .com.br, .com, .co.uk, .ca, .de (buttermilch), .fr (lait ribot), .com.mx, .it, .es (mazada, suero de mantequilla), .co.jp, .sg, .ae, .com.au, .in, .nl, .sa, .com.tu, .se, .pl, .com.be, .eg, .at,
-site = ".fr"
+site = ".com.br"
 coletaElemento(palavra_chave, site)
 
 # coletaReview("B07HM62FL3")
