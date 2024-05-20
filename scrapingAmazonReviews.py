@@ -46,7 +46,7 @@ def coletaReview(link_review, site):
     link_produto = driver.find_element(By.CSS_SELECTOR, "a[data-hook='product-link']").get_attribute("href")
     asin = re.split('/dp/|/ref', link_produto)[1]
 
-    print("Reviews: " + asin)
+    # print(" - Reviews: " + asin)
 
     # INICIANDO LISTA PARA ARMAZENAR
     product_review = []
@@ -162,6 +162,7 @@ def coletaReviewAux(asin, site):
             review_elements = WebDriverWait(driver, 3).until(
                 EC.presence_of_all_elements_located((By.CSS_SELECTOR, '[id*=review-card]')))
         except:
+            print("Verificar " + link_reviews)
             break
         # if not review_elements:
         #     break
@@ -197,13 +198,19 @@ def coletaDetalhes(url, site, review = False):
     driver.get(url)
 
     asin = re.split("/dp/", url)[1].split('/')[0]
-    print("Detalhe: " + asin)
+    if review:
+        print(" - Review - Detalhe: " + asin)
+    else:
+        print("Detalhe: " + asin)
 
     try:
         pag = WebDriverWait(driver, 3).until(
             EC.presence_of_element_located((By.ID, 'dp-container')))
     except:
+        print("Verificar  " + url)
+        driver.close()
         return None
+
     try:
         driver.find_element(By.ID, "sp-cc-all-link").click()
     except NoSuchElementException:
@@ -336,7 +343,7 @@ def coletaPerfil(link_perfil, site):
             link_produto = driver2.find_element(By.CSS_SELECTOR, "a[data-hook='product-link']").get_attribute("href")
             asin = re.split('/dp/|/ref', link_produto)[1]
             driver2.close()
-            compras = pd.concat([compras, coletaDetalhes(asin, site, link_perfil)], ignore_index=True)
+            compras = pd.concat([compras, coletaDetalhes(link_produto, site, link_perfil)], ignore_index=True)
 
         driver.close()
 
@@ -454,7 +461,7 @@ def coletaElemento(palavra_chave, site):
             if ratings > 0: #### trocar pra pegar avalições com análise (como checar?) , esse aqui verifica só a qtde notas
                 # avaliacoes = pd.concat([avaliacoes, coletaReview(data_asin, site)], ignore_index=True)
                 # tempAvaliacoes, tempProfiles = coletaReview(data_asin, site)
-                tempAvaliacoes = coletaReviewAux(link, site)
+                tempAvaliacoes = coletaReviewAux(data_asin, site)
                 avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
                 for link_perfil in tempAvaliacoes.link_perfil:
                     tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, site)
