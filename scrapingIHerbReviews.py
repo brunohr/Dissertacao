@@ -117,24 +117,9 @@ def coletaReview(asin, site):
             else:
                 profile_id = None
 
-            # product_site.append(site)
-            # product_asin.append(asin)
-            # product_review_title.append(review_title)
-            # product_review_text.append(review_text)
-            # product_review_star.append(review_star)
-            # product_review_user.append(author_name)
-            # product_review_date.append(review_date)
-
             product_review.append((site, asin, review_title, review_text, review_star, author_name, review_date, review_country, helpful_votes, review_link, profile_link, profile_id))
         numPag+=1
         driver.get(link_reviews+str(numPag))
-            # print("ASIN: ", asin)
-            # print("Title: ", review_title)
-            # print("Review: ", review_text)
-            # print("Stars: ", review_star)
-            # print("Author: ", author_name)
-            # print("Review Date: ", review_date)
-            # print("\n")
 
         # PASSAR PRA PRÓXIMA PAG
         # try:
@@ -163,27 +148,21 @@ def coletaReview(asin, site):
                         columns=['site', 'asin', 'title', 'text', 'star', 'user', 'data', 'country', 'helpful_votes', 'link_avaliacao', 'link_perfil', 'id_perfil'])
 
     return review #, profiles
-def coletaDetalhes(asin, site, review = False):
+def coletaDetalhes(asin, url, review = False):
     driver = webdriver.Firefox()
-    url = "https://www.amazon"+site+"/dp/"+asin
     driver.get(url)
 
     pag = WebDriverWait(driver, 3).until(
-            EC.presence_of_element_located((By.ID, 'dp-container')))
-    try:
-        driver.find_element(By.ID, "sp-cc-all-link").click()
-    except NoSuchElementException:
-        pass
+            EC.presence_of_element_located((By.XPATH, './/div[@class="product-grouping-wrapper defer-block"]')))
+    # try:
+    #     driver.find_element(By.ID, "sp-cc-all-link").click()
+    # except NoSuchElementException:
+    #     pass
 
-    try:
-        marca = pag.find_element(By.ID, 'BylineInfo').text.strip()
-    except NoSuchElementException:
-        try:
-            marca = pag.find_element(By.ID, 'bylineInfo_feature_div').text.strip()
-        except NoSuchElementException:
-            marca = None
-
-    nome = pag.find_element(By.ID, 'productTitle').text.strip()
+    nome = pag.find_element(By.ID, 'name').get_attribute("textContent").strip()
+    marca = pag.find_element(By.XPATH, './/div/div/a[@class="last"][1]').text.strip()
+    # tag = pag.find_element(By.XPATH, './/a[contains(@href, "categories")]/a').text.strip()
+    tag = pag.find_element(By.XPATH, './/div/div/a[4]').text.strip()
 
     # DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
     # try:
@@ -195,55 +174,22 @@ def coletaDetalhes(asin, site, review = False):
     #     moeda, price = None, None
     moeda, price = None, None
 
-    try:
-        overview = pag.find_element(By.ID, 'productOverview_feature_div').text.strip()
-    except NoSuchElementException:
-        overview = None
+    descricao, uso, ingredientes, advertencia, aviso = None, None, None, None, None
 
-    try:
-        features = pag.find_element(By.ID, 'featurebullets_feature_div').text.strip()
-    except NoSuchElementException:
-        try:
-            features = pag.find_element(By.ID, 'productFactsDesktop_feature_div').text.strip()
-        except NoSuchElementException:
-            features = None
+    aux = pag.find_elements(By.XPATH, './/div[@class="row"]/div[contains(@class, "col-xs-24")]/div[@class="row item-row"]')
 
-    try:
-        details = pag.find_element(By.ID, 'productDetails_feature_div').text.strip()
-    except NoSuchElementException:
-        try:
-            details = pag.find_element(By.ID, 'detailBulletsWrapper_feature_div').text.strip()
-        except NoSuchElementException:
-            details = None
-    try:
-        description = pag.find_element(By.ID, 'productDescription_feature_div').text.strip()
-    except NoSuchElementException:
-        try:
-            description = pag.find_element(By.ID, 'bookDescription_feature_div').text.strip()
-        except NoSuchElementException:
-            description = None
+    for bloco in aux:
+        if "Descrição\n" in bloco.text.strip():
+            descricao = bloco.text.strip()
+        elif "Uso Sugerido\n" in bloco.text.strip():
+            uso = bloco.text.strip()
+        elif "Outros Ingredientes\n" in bloco.text.strip():
+            ingredientes = bloco.text.strip()
+        elif "Advertências\n" in bloco.text.strip():
+            advertencia = bloco.text.strip()
+        elif "Aviso Legal\n" in bloco.text.strip():
+            aviso = bloco.text.strip()
 
-    try:
-        information = pag.find_element(By.ID, 'importantInformation_feature_div').text.strip()
-    except NoSuchElementException:
-        information = None
-
-    try:
-        documents = pag.find_element(By.ID, 'productDocuments_feature_div').text.strip()
-    except NoSuchElementException:
-        documents = None
-
-    try:
-        tag = driver.find_element(By.XPATH, './/a[@class="nav-a nav-b"]').text.strip()
-    except NoSuchElementException:
-        try:
-            tag = driver.find_element(By.XPATH, './/ul/li[1]/span/a').text.strip()
-        except NoSuchElementException:
-            tag = None
-    # detalhes = pd.DataFrame(data=[[asin, overview, features, details]],
-    #                     columns=['asin', 'overview', 'features', 'details'])
-
-    # print(detalhes)
     driver.close()
 
     # try:
@@ -259,8 +205,8 @@ def coletaDetalhes(asin, site, review = False):
     #     mydb.rollback()
     #     print(e)
 
-    return pd.DataFrame(data=[[site, asin, nome, marca, price, tag, overview, features, details, description, information, documents]],
-                       columns=['site', 'asin', 'nome', 'marca', 'price', 'tag', 'overview', 'features', 'details', 'description', 'information', 'documents'])
+    return pd.DataFrame(data=[[site, asin, nome, marca, tag, moeda, price, descricao, uso, ingredientes, advertencia, aviso]],
+                       columns=['site', 'asin', 'nome', tag, 'marca', 'moeda', 'price', 'descricao', 'uso', 'ingredientes', 'advertencia', 'aviso'])
 
 def coletaPerfil(link, site):
     driver = webdriver.Firefox()
