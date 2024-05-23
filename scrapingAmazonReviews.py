@@ -555,6 +555,8 @@ def coletaElemento(palavra_chave, site):
     # print(product)
     # print(final)
     # print(avaliacoes)
+    
+    import pandas as pd
 
     # Salvando os dataframes em arquivos csv -> 'amazon' + pais + palavra_chave
     # final.to_csv('results/amazon'+site+'_'+palavra_chave+'_(produtos)_'+today+'.csv', index=False)
@@ -569,6 +571,8 @@ def coletaElemento(palavra_chave, site):
     #     avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
     #     product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
 
+    return product, product_descr, avaliacoes, profiles
+
 palavra_chave = "buttermilk"
 
 #### .com.br, .com, .co.uk, .ca, .de (buttermilch), .fr (lait ribot), .com.mx, .it, .es (mazada, suero de mantequilla), .co.jp, .sg, .ae, .com.au, .in, .nl, .sa, .com.tu, .se, .pl, .com.be, .eg, .at,
@@ -578,4 +582,17 @@ site = ".com"
 
 # coletaReview("B07HM62FL3")
 
-# coletaDetalhes('B09ZMTBTSV')
+product, product_descr, avaliacoes, profiles = coletaDetalhes('B09ZMTBTSV')
+
+from transformers import MarianMTModel, MarianTokenizer
+
+src_reviews = ['>>pt<<' + str(r) for r in avaliacoes.text.tolist()]
+model_name = 'Helsinki-NLP/opus-mt-en-ROMANCE'
+tokenizer = MarianTokenizer.from_pretrained(model_name)
+print(tokenizer.supported_language_codes)
+model = MarianMTModel.from_pretrained(model_name)
+translated = model.generate(**tokenizer.prepare_seq2seq_batch(src_reviews, return_tensors='pt'))
+tgt_text = [tokenizer.decode(t, skip_special_tokens=True) for t in translated]
+
+
+
