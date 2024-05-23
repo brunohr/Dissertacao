@@ -54,7 +54,7 @@ def coletaReview(link_review, site):
     # PEGANDO CADA CARD DE AVALIAÇÃO
     while True:
         # time.sleep(3)
-        #
+        #coletaDetalhes(link, site)
         # # PEGANDO CADA CARD DE AVALIAÇÃO
         # review_elements = driver.find_elements(By.CSS_SELECTOR, '[id*=review-card]')
         try:
@@ -99,7 +99,7 @@ def coletaReview(link_review, site):
         # if profile_link:
         #     coletaPerfil(profile_link, review_country)
 
-        product_review.append((site, review_title, review_text, review_img, review_star, author_name, review_date, review_country, link_review, profile_link, profile_id, asin))
+        product_review.append((site, review_title, review_text, review_img, review_star, author_name, review_date, review_country, link_review, profile_link, profile_id, link_produto, asin))
         break
         # print("ASIN: ", asin)
         # print("Title: ", review_title)
@@ -133,7 +133,7 @@ def coletaReview(link_review, site):
 
     # SALVANDO AS LISTAS EM DF
     review = pd.DataFrame(data=product_review,
-                        columns=['site', 'title', 'text', 'img', 'star', 'user', 'date', 'country', 'link_avaliacao', 'link_perfil', 'id_perfil', 'asin'])
+                        columns=['site', 'title', 'text', 'img', 'star', 'user', 'date', 'country', 'link_avaliacao', 'link_perfil', 'id_perfil', 'link_produto', 'asin'])
 
     return review #, profiles
 
@@ -209,13 +209,15 @@ def coletaDetalhes(url, site, review = False):
     except:
         print("Verificar  " + url)
         driver.close()
-        return None
+        return pd.DataFrame()
 
     try:
         driver.find_element(By.ID, "sp-cc-all-link").click()
     except NoSuchElementException:
         pass
 
+    nome = pag.find_element(By.ID, 'productTitle').text.strip()
+    
     try:
         marca = pag.find_element(By.ID, 'BylineInfo').text.strip()
     except NoSuchElementException:
@@ -224,17 +226,24 @@ def coletaDetalhes(url, site, review = False):
         except NoSuchElementException:
             marca = None
 
-    nome = pag.find_element(By.ID, 'productTitle').text.strip()
-
     # DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
     # try:
     #     moeda = pag.find_element('xpath', './/span[@class="a-price-symbol"]').text.strip()
     #     whole_price = pag.find_element('xpath', './/span[@class="a-price-whole"]').text.strip()
     #     fraction_price = pag.find_element('xpath', './/span[@class="a-price-fraction"]').text.strip()
-    #     price = float(('.'.join([whole_price, fraction_price])))
+    #     if whole_price.isnumeric() and fraction_price.isnumeric():
+    #         price = float(('.'.join([whole_price, fraction_price])))
+    #     else:
+    #         moeda, price = None, None
     # except NoSuchElementException:
     #     moeda, price = None, None
-    moeda, price = None, None
+    # # moeda, price = None, None
+    
+    try:
+        price = pag.find_element(By.XPATH, ".//span[@class='a-price a-text-price a-size-medium apexPriceToPay']").text.strip()
+        moeda = price
+    except NoSuchElementException:
+        moeda, price = None, None
 
     try:
         overview = pag.find_element(By.ID, 'productOverview_feature_div').text.strip()
@@ -300,11 +309,11 @@ def coletaDetalhes(url, site, review = False):
     #     mydb.rollback()
     #     print(e)
 
-    return pd.DataFrame(data=[[site, asin, nome, marca, price, tag, overview, features, details, description, information, documents, review]],
-                       columns=['site', 'asin', 'nome', 'marca', 'price', 'tag', 'overview', 'features', 'details', 'description', 'information', 'documents', 'review'])
+    return pd.DataFrame(data=[[site, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents, review]],
+                       columns=['site', 'asin', 'nome', 'marca', 'moeda', 'price', 'tag', 'overview', 'features', 'details', 'description', 'information', 'documents', 'review'])
 
 
-def coletaPerfil(link_perfil, site):
+def coletaPerfil(link_perfil, site, coletaProdutos = False):
     driver = webdriver.Firefox()
     driver.get(link_perfil)
     try:
@@ -317,7 +326,7 @@ def coletaPerfil(link_perfil, site):
             pag = WebDriverWait(driver, 3).until(EC.visibility_of_element_located((By.ID, "profile_v5")))
         except:
             driver.close()
-            return None, None, None
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
         compras = pd.DataFrame()
         lista_reviews = pd.DataFrame()
@@ -332,24 +341,26 @@ def coletaPerfil(link_perfil, site):
 
         # sql = "insert into profile values (%s, %s, %s, %s)"
         # cursor.execute(sql, (link, nome, img, profile_country))
-
-        reviews = pag.find_elements(By.XPATH, './/a[@class="a-link-normal your-content-card"]')
-        for review in reviews:
-            link_review = review.get_attribute("href")
-            lista_reviews = pd.concat([lista_reviews, coletaReview(link_review, site)], ignore_index=True)
-
-            driver2 = webdriver.Firefox()
-            driver2.get(link_review)
-            link_produto = driver2.find_element(By.CSS_SELECTOR, "a[data-hook='product-link']").get_attribute("href")
-            asin = re.split('/dp/|/ref', link_produto)[1]
-            driver2.close()
-            compras = pd.concat([compras, coletaDetalhes(link_produto, site, link_perfil)], ignore_index=True)
+        if coletaProdutos:
+            reviews = pag.find_elements(By.XPATH, './/a[@class="a-link-normal your-content-card"]')
+            for review in reviews:
+                link_review = review.get_attribute("href")
+                auxReview = coletaReview(link_review, site)
+                lista_reviews = pd.concat([lista_reviews, auxReview], ignore_index=True)
+    
+                # driver2 = webdriver.Firefox()
+                # driver2.get(link_review)
+                # link_produto = driver2.find_element(By.CSS_SELECTOR, "a[data-hook='product-link']").get_attribute("href")
+                # asin = re.split('/dp/|/ref', link_produto)[1]
+                # driver2.close()
+                compras = pd.concat([compras, coletaDetalhes(auxReview.link_produto[0], site, link_perfil)], ignore_index=True)
 
         driver.close()
 
         profile = pd.DataFrame(data = [[nome, img, bio, link_perfil, id_perfil]],
                                columns = ['nome', 'img', 'bio', 'link', 'id_profile'])
         return profile, lista_reviews, compras
+
 
 def coletaElemento(palavra_chave, site):
     today = date.today().strftime("%Y%m%d")
@@ -401,17 +412,35 @@ def coletaElemento(palavra_chave, site):
             EC.presence_of_all_elements_located((By.XPATH, '//div[contains(@class, "s-result-item s-asin")]')))
 
         for item in items:
+            
             name = item.find_element('xpath', './/span[@class="a-size-base-plus a-color-base a-text-normal"]').text
-
+            
+            try:
+                "mp3" in item.find_element('xpath', ".//a[@class='a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold']").text.strip()
+                name = name + " (AMAZON MUSIC)"
+                continue
+            except NoSuchElementException:
+                pass
+            
             try:
                 item.find_element('class name', "puis-label-popover-default")
                 name = name + " (PROPAGANDA)"
+                continue
+            except NoSuchElementException:
+                pass
+            
+            try:
+                item.find_element('class name', "puis-label-popover puis-sponsored-label-text")
+                name = name + " (PROPAGANDA)"
+                continue
             except NoSuchElementException:
                 pass
 
             data_asin = item.get_attribute("data-asin")
 
             # DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
+            moeda = item.find_elements('xpath', './/span[@class="a-price-symbol"]')
+            moeda = moeda[0] if moeda else None
             whole_price = item.find_elements('xpath', './/span[@class="a-price-whole"]')
             fraction_price = item.find_elements('xpath', './/span[@class="a-price-fraction"]')
             if whole_price and fraction_price:
@@ -450,11 +479,17 @@ def coletaElemento(palavra_chave, site):
 
             #ACESSANDO PÁGINA DO PRODUTO, EXCETO SE FOR AMAZON MUSIC (E OS ANÚNCIOS?)
             #DENTRO DA FUNÇÃO FAZ A INSERÇÃO NO BANCO
-            try:
-                "mp3" in item.find_element('xpath', ".//a[@class='a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold']").text.strip()
-                name = name + " (AMAZON MUSIC)"
-            except NoSuchElementException:
-                product_descr = pd.concat([product_descr, coletaDetalhes(link, site)], ignore_index=True)
+            # try:
+            #     "mp3" in item.find_element('xpath', ".//a[@class='a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold']").text.strip()
+            #     name = name + " (AMAZON MUSIC)"
+            # except NoSuchElementException:
+            #     auxDetalhes = coletaDetalhes(link, site)[0]
+            #     if not auxDetalhes.empty:
+            #         product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
+
+            auxDetalhes = coletaDetalhes(link, site)
+            if not auxDetalhes.empty:
+                product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
 
             #ACESSANDO PÁGINA DE AVALIAÇÃO DO PRODUTO (SE HOUVER - SE FOR O CASO DE TER AVALIAÇÃO MAS SEM COMENTÁRIO, VAI SÓ ABRIR E FECHAR)
             #DENTRO DA FUNÇÃO FAZ A INSERÇÃO NO BANCO
@@ -462,12 +497,16 @@ def coletaElemento(palavra_chave, site):
                 # avaliacoes = pd.concat([avaliacoes, coletaReview(data_asin, site)], ignore_index=True)
                 # tempAvaliacoes, tempProfiles = coletaReview(data_asin, site)
                 tempAvaliacoes = coletaReviewAux(data_asin, site)
-                avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
-                for link_perfil in tempAvaliacoes.link_perfil:
-                    tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, site)
-                    profiles = pd.concat([profiles, tempPerfil], ignore_index=True)
-                    avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
-                    product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
+                if not tempAvaliacoes.empty:
+                    avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
+                    for link_perfil in tempAvaliacoes.link_perfil:
+                        tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, site, False)
+                        if not tempPerfil.empty:
+                            profiles = pd.concat([profiles, tempPerfil], ignore_index=True)
+                        if not tempReview.empty:
+                            avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
+                        if not tempCompras.empty:
+                            product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
                 # profiles = pd.concat([profiles, tempProfiles], ignore_index=True)
                 # print("ok")
             # else:
@@ -475,8 +514,8 @@ def coletaElemento(palavra_chave, site):
 
             # SALVANDO NO DATAFRAME
             product = pd.concat(
-                [product, pd.DataFrame(data=[[site, data_asin, name, price, ratings, ratings_num, img, link]],
-                                       columns=['site', 'asin', 'name', 'price', 'ratings', 'ratings_num', 'img', 'link'])],
+                [product, pd.DataFrame(data=[[site, data_asin, name, moeda, price, ratings, ratings_num, img, link]],
+                                       columns=['site', 'asin', 'name', 'moeda', 'price', 'ratings', 'ratings_num', 'img', 'link'])],
                 ignore_index=True)
 
             # INSERÇÃO NO BANCO DE DADOS
@@ -524,12 +563,18 @@ def coletaElemento(palavra_chave, site):
     avaliacoes.to_excel('results/amazon'+site+'_'+palavra_chave+'_(avaliacoes)_'+today+'.xlsx', index=False)
     profiles.to_excel('results/amazon'+site+'_'+palavra_chave+'_(perfis)_'+today+'.xlsx', index=False)
 
+    # for link_perfil in avaliacoes.link_perfil:
+    #     tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, site)
+    #     profiles = pd.concat([profiles, tempPerfil], ignore_index=True)
+    #     avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
+    #     product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
+
 palavra_chave = "buttermilk"
 
 #### .com.br, .com, .co.uk, .ca, .de (buttermilch), .fr (lait ribot), .com.mx, .it, .es (mazada, suero de mantequilla), .co.jp, .sg, .ae, .com.au, .in, .nl, .sa, .com.tu, .se, .pl, .com.be, .eg, .at,
 site = ".com"
 
-coletaElemento(palavra_chave, site)
+# coletaElemento(palavra_chave, site)
 
 # coletaReview("B07HM62FL3")
 
