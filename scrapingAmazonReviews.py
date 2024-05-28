@@ -155,7 +155,6 @@ def coletaReview(link_review, site):
 
     return review  # , profiles
 
-
 def coletaReviewAux(asin, site):
     driver = webdriver.Firefox(options = options)
     numPag = 1
@@ -178,10 +177,10 @@ def coletaReviewAux(asin, site):
         # # PEGANDO CADA CARD DE AVALIAÇÃO
         # review_elements = driver.find_elements(By.CSS_SELECTOR, '[id*=review-card]')
         try:
-            review_elements = WebDriverWait(driver, 3).until(
+            pag = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'cm_cr-review_list')))
+            review_elements = WebDriverWait(pag, 10).until(
                 EC.presence_of_all_elements_located((By.CSS_SELECTOR, '[id*=review-card]')))
         except:
-            print("Verificar " + link_reviews)
             break
         # if not review_elements:
         #     break
@@ -191,11 +190,11 @@ def coletaReviewAux(asin, site):
             if review_link:
                 review_links.append(review_link)
         numPag += 1
-        # driver.get(link_reviews + str(numPag))
-        try:
-            WebDriverWait(driver, 3).until(EC.visibility_of_element_located((By.XPATH, ".//div[@id='cm_cr-pagination_bar']/ul/li[@class='a-last']"))).click()
-        except:
-            break
+        driver.get(link_reviews + str(numPag))
+        # try:
+        #     WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH, ".//div[@id='cm_cr-pagination_bar']/ul/li[@class='a-last']"))).click()
+        # except:
+        #     break
 
     driver.close()
 
@@ -268,7 +267,7 @@ def coletaDetalhes(url, site, review=False):
                                  ".//span[@class='a-price a-text-price a-size-medium apexPriceToPay']").text.strip()
         moeda = price
     except NoSuchElementException:
-        moeda, price = None, None
+        moeda, price = 0.0, None
 
     try:
         overview = pag.find_element(By.ID, 'productOverview_feature_div').text.strip()
@@ -361,7 +360,8 @@ def coletaPerfil(link_perfil, site, coletaProdutos=False):
         id_perfil = link_perfil.split('.account.')[1].split('/ref')[0]
 
         nome = pag.find_element(By.ID, "customer-profile-name-header").text.strip()
-        img = pag.find_element(By.XPATH, ".//img[@id='avatar-image']").get_attribute("src")
+        imgAux = pag.find_element(By.XPATH, ".//img[@id='avatar-image']").get_attribute("src")
+         
         try:
             bio = pag.find_element(By.XPATH, ".//div[@class='a-section pw-bio']").text.strip()
         except NoSuchElementException:
@@ -383,9 +383,12 @@ def coletaPerfil(link_perfil, site, coletaProdutos=False):
                 # driver2.close()
                 compras = pd.concat([compras, coletaDetalhes(auxReview.link_produto[0], site, link_perfil)],
                                     ignore_index=True)
-
+        driver.get(imgAux)
+        try:
+            img = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/img'))).get_attribute("src")
+        except:
+            img = ""
         driver.close()
-
         profile = pd.DataFrame(data=[[nome, img, bio, link_perfil, id_perfil]],
                                columns=['nome', 'img', 'bio', 'link', 'id_profile'])
         return profile, lista_reviews, compras
@@ -474,7 +477,7 @@ def coletaElemento(palavra_chave, site):
             if whole_price and fraction_price:
                 price = float('.'.join([whole_price[0].text.replace('.', '').replace(',', ''), fraction_price[0].text]))
             else:
-                price = None
+                price = 0.0
             # price = None
 
             # DESMEMBRANDO A AVALIAÇÃO - MANTENDO NA PÁG DE RESULTS PRA EVITAR UM LOOP COM A COLETA DE DETALHES VINDA DA PÁGINA DO USUÁRIO
