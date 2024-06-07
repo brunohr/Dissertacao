@@ -11,6 +11,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+import urllib.request
+
 import re
 
 locale.setlocale(locale.LC_ALL, 'pt_BR')
@@ -44,7 +46,7 @@ options.add_argument("--proxy-server=%s" % PROXY)
 # cursor.close()
 # mydb.close() #close the connection
 
-def coletaReview(link_review, site):
+def coletaReview(link_review, dominio):
     driver = webdriver.Firefox(options = options)
 
     driver.get(link_review)
@@ -64,7 +66,7 @@ def coletaReview(link_review, site):
     # PEGANDO CADA CARD DE AVALIAÇÃO
     while True:
         # time.sleep(3)
-        # coletaDetalhes(link, site)
+        # coletaDetalhes(link, dominio)
         # # PEGANDO CADA CARD DE AVALIAÇÃO
         # review_elements = driver.find_elements(By.CSS_SELECTOR, '[id*=review-card]')
         try:
@@ -75,9 +77,6 @@ def coletaReview(link_review, site):
 
         # EXTRAINDO NOME DO AUTOR
         author_name = review_element.find_element(By.CLASS_NAME, 'a-profile-name').text.strip()
-
-        author_img = review_element.find_element(By.XPATH, './/div[@class="a-profile-avatar"]/img').get_attribute("src")
-        author_img.replace("SX48_", "")
 
         # EXTRAIR TÍTULO AVALIAÇÃO
         review_title = review_element.find_element(By.CLASS_NAME, 'review-title-content').text.strip()
@@ -97,6 +96,21 @@ def coletaReview(link_review, site):
 
         # EXTRAINDO PAÍS AVALIAÇÃO
         review_country = review_element.find_element(By.CLASS_NAME, 'review-date').text.split()  ##arrumar
+        
+        # EXTRAINDO LINK E IMAGEM DO PERFIL PARA COLETA SEGUINTE
+        try:
+            profile_link = review_element.find_element(By.CLASS_NAME, 'a-profile').get_attribute("href")
+            profile_id = profile_link.split('.')[-1].split('/')[0]
+            profile_img = review_element.find_element(By.XPATH, ".//div/div/img[@class='']").get_attribute("src")
+            author_img = re.sub(r"SX.*_", "", profile_img)
+            # SALVANDO A IMG PRA NÃO DEPENDER DE INTERNET PRO PROCESSAMENTO DA MESMA
+            if "default._" not in profile_img:
+                urllib.request.urlretrieve(author_img, "results/profile_img/amazon"+dominio+"_"+profile_id+".png")
+            # profiles = pd.concat([profiles, coletaPerfil(profile_link, review_country)], ignore_index=True)
+        except NoSuchElementException:
+            profile_link, profile_id, author_img = None, None, None
+
+        
 
         try:
             review_img = review_element.find_element(By.XPATH, './/img[@class="review-image-tile"]').get_attribute(
@@ -104,18 +118,11 @@ def coletaReview(link_review, site):
         except NoSuchElementException:
             review_img = None
 
-        # EXTRAINDO LINK DO PERFIL PARA COLETA SEGUINTE
-        try:
-            profile_link = review_element.find_element(By.CLASS_NAME, 'a-profile').get_attribute("href")
-            profile_id = profile_link.split('.')[-1].split('/')[0]
-            # profiles = pd.concat([profiles, coletaPerfil(profile_link, review_country)], ignore_index=True)
-        except NoSuchElementException:
-            profile_link, profile_id = None, None
-
+        
         # if profile_link:
         #     coletaPerfil(profile_link, review_country)
 
-        product_review.append((site, review_title, review_text, review_img, review_star, author_name, author_img, review_date,
+        product_review.append((dominio, review_title, review_text, review_img, review_star, author_name, author_img, review_date,
                                review_country, link_review, profile_link, profile_id, link_produto, asin))
         break
         # print("ASIN: ", asin)
@@ -140,7 +147,7 @@ def coletaReview(link_review, site):
 
     # ENVIANDO PARA O BANCO DE DADOS
     # try:
-    #     sql = 'insert into teste.tbl_avaliacoes (site, asin, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+    #     sql = 'insert into teste.tbl_avaliacoes (dominio, asin, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
     #     cursor.executemany(sql, product_review)
     #     print(f"Avaliações do produto {asin} inseridas")
     #     mydb.commit()
@@ -150,17 +157,17 @@ def coletaReview(link_review, site):
 
     # SALVANDO AS LISTAS EM DF
     review = pd.DataFrame(data=product_review,
-                          columns=['site', 'title', 'text', 'img', 'star', 'user', 'user_img', 'date', 'country', 'link_avaliacao',
+                          columns=['dominio', 'title', 'text', 'img', 'star', 'user', 'user_img', 'date', 'country', 'link_avaliacao',
                                    'link_perfil', 'id_perfil', 'link_produto', 'asin'])
 
     return review  # , profiles
 
-def coletaReviewAux(asin, site):
+def coletaReviewAux(asin, dominio):
     driver = webdriver.Firefox(options = options)
     numPag = 1
 
     # PÁGINA DAS AVALIAÇÕES DO PRODUTO
-    link_reviews = 'https://www.amazon' + site + '/product-reviews/' + asin + '?pageNumber='
+    link_reviews = 'https://www.amazon' + dominio + '/product-reviews/' + asin + '?pageNumber='
     driver.get(link_reviews + str(numPag))
     try:
         driver.find_element(By.ID, "sp-cc-acceptall-link").click()
@@ -200,7 +207,7 @@ def coletaReviewAux(asin, site):
 
     # ENVIANDO PARA O BANCO DE DADOS
     # try:
-    #     sql = 'insert into teste.tbl_avaliacoes (site, asin, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+    #     sql = 'insert into teste.tbl_avaliacoes (dominio, asin, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
     #     cursor.executemany(sql, product_review)
     #     print(f"Avaliações do produto {asin} inseridas")
     #     mydb.commit()
@@ -210,14 +217,14 @@ def coletaReviewAux(asin, site):
 
     review = pd.DataFrame()
     for link in review_links:
-        review = pd.concat([review, coletaReview(link, site)], ignore_index=True)
+        review = pd.concat([review, coletaReview(link, dominio)], ignore_index=True)
 
     return review  # , profiles
 
 
-def coletaDetalhes(url, site, review=False):
+def coletaDetalhes(url, dominio, review=False):
     driver = webdriver.Firefox(options = options)
-    # url = "https://www.amazon"+site+"/dp/"+asin
+    # url = "https://www.amazon"+dominio+"/dp/"+asin
     driver.get(url)
 
     asin = re.split("/dp/", url)[1].split('/')[0]
@@ -322,11 +329,11 @@ def coletaDetalhes(url, site, review=False):
 
     # try:
     #     if not review:
-    #         sql = 'insert into teste.tbl_detalhes (site, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-    #         cursor.execute(sql, (site, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents))
+    #         sql = 'insert into teste.tbl_detalhes (dominio, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+    #         cursor.execute(sql, (dominio, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents))
     #     else:
-    #         sql = 'insert into teste.tbl_detalhes_review (site, asin, nome, marca, price, tag, overview, features, details, description, information, documents, review) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-    #         cursor.execute(sql, (site, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents, review))
+    #         sql = 'insert into teste.tbl_detalhes_review (dominio, asin, nome, marca, price, tag, overview, features, details, description, information, documents, review) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+    #         cursor.execute(sql, (dominio, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents, review))
     #     print(f"Detalhes do produto {asin} inseridos")
     #     mydb.commit()
     # except pymysql.Error as e:
@@ -334,13 +341,13 @@ def coletaDetalhes(url, site, review=False):
     #     print(e)
 
     return pd.DataFrame(data=[
-        [site, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents,
+        [dominio, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents,
          review]],
-                        columns=['site', 'asin', 'nome', 'marca', 'moeda', 'price', 'tag', 'overview', 'features',
+                        columns=['dominio', 'asin', 'nome', 'marca', 'moeda', 'price', 'tag', 'overview', 'features',
                                  'details', 'description', 'information', 'documents', 'review'])
 
 
-def coletaPerfil(link_perfil, site, coletaProdutos=False):
+def coletaPerfil(link_perfil, dominio, coletaProdutos=False):
     driver = webdriver.Firefox(options = options)
     driver.get(link_perfil)
     try:
@@ -373,7 +380,7 @@ def coletaPerfil(link_perfil, site, coletaProdutos=False):
             reviews = pag.find_elements(By.XPATH, './/a[@class="a-link-normal your-content-card"]')
             for review in reviews:
                 link_review = review.get_attribute("href")
-                auxReview = coletaReview(link_review, site)
+                auxReview = coletaReview(link_review, dominio)
                 lista_reviews = pd.concat([lista_reviews, auxReview], ignore_index=True)
 
                 # driver2 = webdriver.Firefox(options = options)
@@ -381,7 +388,7 @@ def coletaPerfil(link_perfil, site, coletaProdutos=False):
                 # link_produto = driver2.find_element(By.CSS_SELECTOR, "a[data-hook='product-link']").get_attribute("href")
                 # asin = re.split('/dp/|/ref', link_produto)[1]
                 # driver2.close()
-                compras = pd.concat([compras, coletaDetalhes(auxReview.link_produto[0], site, link_perfil)],
+                compras = pd.concat([compras, coletaDetalhes(auxReview.link_produto[0], dominio, link_perfil)],
                                     ignore_index=True)
         driver.get(imgAux)
         try:
@@ -394,7 +401,7 @@ def coletaPerfil(link_perfil, site, coletaProdutos=False):
         return profile, lista_reviews, compras
 
 
-def coletaElemento(palavra_chave, site):
+def coletaElemento(palavra_chave, dominio):
     today = date.today().strftime("%Y%m%d")
 
     # INICIALIZE O DRIVER DO SELENIUM
@@ -405,14 +412,14 @@ def coletaElemento(palavra_chave, site):
     # LOGANDO PARA PODER ACESSAR PÁGINA DE QUEM AVALIOU O PRODUTO
     # login = input("Login")
     # senha = input("Senha")
-    # driver.get('https://www.amazon'+site+'/login')
+    # driver.get('https://www.amazon'+dominio+'/login')
     # driver.find_element(By.ID, 'ap_email').send_keys(login)
     # driver.find_element(By.ID, 'continue').click()
     # driver.find_element(By.ID, 'ap_email').send_keys(senha)
     # driver.find_element(By.NAME, 'rememberMe').click()
     # driver.find_element(By.ID, 'signInSubmit').click()
 
-    url = 'https://www.amazon' + site + '/s?k=' + palavra_chave + "&dc="
+    url = 'https://www.amazon' + dominio + '/s?k=' + palavra_chave + "&dc="
     # url = 'https://www.amazon.com.br/'
 
     driver.get(url)
@@ -501,8 +508,8 @@ def coletaElemento(palavra_chave, site):
             # # INSERÇÃO NO BANCO DE DADOS
             # try:
             #     # VERIFICAR SE JÁ EXISTE??
-            #     sql = 'insert into teste.tbl_produtos (site, asin, nome, preco, nota, num_avaliacoes, img, link) values (%s, %s, %s, %s, %s, %s, %s, %s)'
-            #     cursor.execute(sql, (site, data_asin, name, price, ratings, ratings_num, img, link))
+            #     sql = 'insert into teste.tbl_produtos (dominio, asin, nome, preco, nota, num_avaliacoes, img, link) values (%s, %s, %s, %s, %s, %s, %s, %s)'
+            #     cursor.execute(sql, (dominio, data_asin, name, price, ratings, ratings_num, img, link))
             #     print(f"Produto {data_asin} inserido")
             # except pymysql.Error as e:
             #     mydb.rollback()
@@ -514,47 +521,41 @@ def coletaElemento(palavra_chave, site):
             #     "mp3" in item.find_element('xpath', ".//a[@class='a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold']").text.strip()
             #     name = name + " (AMAZON MUSIC)"
             # except NoSuchElementException:
-            #     auxDetalhes = coletaDetalhes(link, site)[0]
+            #     auxDetalhes = coletaDetalhes(link, dominio)[0]
             #     if not auxDetalhes.empty:
             #         product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
 
-            auxDetalhes = coletaDetalhes(link, site)
+            auxDetalhes = coletaDetalhes(link, dominio)
             if not auxDetalhes.empty:
                 product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
 
             # ACESSANDO PÁGINA DE AVALIAÇÃO DO PRODUTO (SE HOUVER - SE FOR O CASO DE TER AVALIAÇÃO MAS SEM COMENTÁRIO, VAI SÓ ABRIR E FECHAR)
             # DENTRO DA FUNÇÃO FAZ A INSERÇÃO NO BANCO
             if ratings > 0:  #### trocar pra pegar avalições com análise (como checar?) , esse aqui verifica só a qtde notas
-                # avaliacoes = pd.concat([avaliacoes, coletaReview(data_asin, site)], ignore_index=True)
-                # tempAvaliacoes, tempProfiles = coletaReview(data_asin, site)
-                tempAvaliacoes = coletaReviewAux(data_asin, site)
+                tempAvaliacoes = coletaReviewAux(data_asin, dominio)
                 if not tempAvaliacoes.empty:
                     avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
-                    for link_perfil in tempAvaliacoes.link_perfil:
-                        tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, site, False)
-                        if not tempPerfil.empty:
-                            profiles = pd.concat([profiles, tempPerfil], ignore_index=True)
-                        if not tempReview.empty:
-                            avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
-                        if not tempCompras.empty:
-                            product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
-                # profiles = pd.concat([profiles, tempProfiles], ignore_index=True)
-                # print("ok")
-            # else:
-            #     print("sem avaliações\n")
-
+                    # for link_perfil in tempAvaliacoes.link_perfil:
+                    #     tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, dominio, False)
+                    #     if not tempPerfil.empty:
+                    #         profiles = pd.concat([profiles, tempPerfil], ignore_index=True)
+                    #     if not tempReview.empty:
+                    #         avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
+                    #     if not tempCompras.empty:
+                    #         product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
+                
             # SALVANDO NO DATAFRAME
             product = pd.concat(
-                [product, pd.DataFrame(data=[[site, data_asin, name, moeda, price, ratings, ratings_num, img, link]],
-                                       columns=['site', 'asin', 'name', 'moeda', 'price', 'ratings', 'ratings_num',
+                [product, pd.DataFrame(data=[[dominio, data_asin, name, moeda, price, ratings, ratings_num, img, link]],
+                                       columns=['dominio', 'asin', 'name', 'moeda', 'price', 'ratings', 'ratings_num',
                                                 'img', 'link'])],
                 ignore_index=True)
 
             # INSERÇÃO NO BANCO DE DADOS
             # try:
             #     # VERIFICAR SE JÁ EXISTE??
-            #     sql = 'insert into teste.tbl_produtos (site, asin, nome, preco, nota, num_avaliacoes, img, link) values (%s, %s, %s, %s, %s, %s, %s, %s)'
-            #     cursor.execute(sql, (site, data_asin, name, price, ratings, ratings_num, img, link))
+            #     sql = 'insert into teste.tbl_produtos (dominio, asin, nome, preco, nota, num_avaliacoes, img, link) values (%s, %s, %s, %s, %s, %s, %s, %s)'
+            #     cursor.execute(sql, (dominio, data_asin, name, price, ratings, ratings_num, img, link))
             #     print(f"Produto {data_asin} inserido")
             #     mydb.commit()
             # except pymysql.Error as e:
@@ -574,7 +575,7 @@ def coletaElemento(palavra_chave, site):
     # profiles = pd.DataFrame()
     # for link in avaliacoes['link_perfil']:
     #     if link:
-    #         profiles = pd.concat([profiles, coletaPerfil(link, site)], ignore_index=True)
+    #         profiles = pd.concat([profiles, coletaPerfil(link, dominio)], ignore_index=True)
 
     # SALVANDO TUDO NO BANCO DE DADOS
     # cursor.close()
@@ -588,15 +589,15 @@ def coletaElemento(palavra_chave, site):
     # print(avaliacoes)
 
     # Salvando os dataframes em arquivos csv -> 'amazon' + pais + palavra_chave
-    # final.to_csv('results/amazon'+site+'_'+palavra_chave+'_(produtos)_'+today+'.csv', index=False)
-    product.to_excel('results/amazon' + site + '_' + palavra_chave + '_(produtos)_' + today + '.xlsx', index=False)
-    product_descr.to_excel('results/amazon' + site + '_' + palavra_chave + '_(detalhes)_' + today + '.xlsx',
+    # final.to_csv('results/amazon'+dominio+'_'+palavra_chave+'_(produtos)_'+today+'.csv', index=False)
+    product.to_excel('results/amazon' + dominio + '_' + palavra_chave + '_(produtos)_' + today + '.xlsx', index=False)
+    product_descr.to_excel('results/amazon' + dominio + '_' + palavra_chave + '_(detalhes)_' + today + '.xlsx',
                            index=False)
-    avaliacoes.to_excel('results/amazon' + site + '_' + palavra_chave + '_(avaliacoes)_' + today + '.xlsx', index=False)
-    profiles.to_excel('results/amazon' + site + '_' + palavra_chave + '_(perfis)_' + today + '.xlsx', index=False)
+    avaliacoes.to_excel('results/amazon' + dominio + '_' + palavra_chave + '_(avaliacoes)_' + today + '.xlsx', index=False)
+    profiles.to_excel('results/amazon' + dominio + '_' + palavra_chave + '_(perfis)_' + today + '.xlsx', index=False)
 
     # for link_perfil in avaliacoes.link_perfil:
-    #     tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, site)
+    #     tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, dominio)
     #     profiles = pd.concat([profiles, tempPerfil], ignore_index=True)
     #     avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
     #     product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
@@ -606,13 +607,13 @@ def coletaElemento(palavra_chave, site):
 palavra_chave = "buttermilk"
 
 #### .com.br, .com, .co.uk, .ca, .de (buttermilch), .fr (lait ribot), .com.mx, .it, .es (mazada, suero de mantequilla), .co.jp, .sg, .ae, .com.au, .in, .nl, .sa, .com.tu, .se, .pl, .com.be, .eg, .at,
-site = ".com"
+dominio = ".com"
 
-# coletaElemento(palavra_chave, site)
+# coletaElemento(palavra_chave, dominio)
 
 # coletaReview("B07HM62FL3")
 
-product, product_descr, avaliacoes, profiles = coletaElemento(palavra_chave, site)
+product, product_descr, avaliacoes, profiles = coletaElemento(palavra_chave, dominio)
 
 from transformers import MarianMTModel, MarianTokenizer
 
