@@ -75,6 +75,12 @@ def coletaReview(link_review, dominio):
                 EC.presence_of_element_located((By.XPATH, ".//div[@class='MuiBox-root css-jer996']")))
         except:
             break
+        
+        try:
+            js_string = "var element = document.getElementById('px-captcha-wrapper');element.remove();"
+            driver.execute_script(js_string)
+        except:
+            pass
 
         # EXTRAINDO NOME DO AUTOR
         author_name = review_element.find_element(By.XPATH, './/div/a[@class="MuiTypography-root MuiTypography-body1 css-ehmaku"]').text.strip()
@@ -190,14 +196,21 @@ def coletaReviewAux(link_review, dominio):
 
     # PEGANDO CADA CARD DE AVALIAÇÃO
     while True:
-        # time.sleep(3)
+        time.sleep(2)
+        
+        try:
+            js_string = "var element = document.getElementById('px-captcha-wrapper');element.remove();"
+            driver.execute_script(js_string)
+        except:
+            pass
+        
         #
         # # PEGANDO CADA CARD DE AVALIAÇÃO
         # review_elements = driver.find_elements(By.CSS_SELECTOR, '[id*=review-card]')
         try:
-            pag = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/div[@class="MuiBox-root css-i9gxme"]')))
-            review_elements = WebDriverWait(pag, 10).until(
-                EC.presence_of_all_elements_located((By.CSS_SELECTOR, './/div[@class="MuiBox-root css-1v71s4n"]')))
+            # pag = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/div[@class="MuiBox-root css-i9gxme"]')))
+            review_elements = WebDriverWait(driver, 10).until(
+                EC.presence_of_all_elements_located((By.XPATH, './/div[@class="MuiBox-root css-1v71s4n"]')))
         except:
             break
         # if not review_elements:
@@ -207,9 +220,17 @@ def coletaReviewAux(link_review, dominio):
             review_link = review_element.find_element(By.XPATH, './/div/a[@class="MuiTypography-root MuiTypography-inherit MuiLink-root MuiLink-underlineNone css-bvdvm5"]').get_attribute("href")
             if review_link:
                 review_links.append(review_link)
+                
+                
+                
         try:
-            pag.find_element(By.XPATH, ".//svg[@class='NavigateNextIcon']").click()
+            driver.find_element(By.XPATH, ".//button[@aria-label='Go to next page' and disabled='']")
         except NoSuchElementException:
+            pass
+                
+        try:
+            driver.find_element(By.XPATH, ".//button[@aria-label='Go to next page']").click()
+        except:
             break
 
         # try:
@@ -292,8 +313,10 @@ def coletaDetalhes(url, dominio, review=False):
     #     mydb.rollback()
     #     print(e)
 
-    return pd.DataFrame(data=[[site, nome, marca, tag, moeda, price, descricao, uso, ingredientes, advertencia, aviso]],
-                       columns=['site',  'nome', tag, 'marca', 'moeda', 'price', 'descricao', 'uso', 'ingredientes', 'advertencia', 'aviso'])
+    return pd.DataFrame(data=[[dominio, nome, marca, tag, moeda, price, descricao, uso, ingredientes, advertencia, aviso]],
+                       columns=['dominio',  'nome', tag, 'marca', 'moeda', 'price', 'descricao', 'uso', 'ingredientes', 'advertencia', 'aviso'])
+
+
 
 def coletaPerfil(link_perfil, dominio, coletaProdutos=False):
     driver = webdriver.Firefox(options=options)
@@ -357,6 +380,7 @@ def coletaElemento(palavra_chave, dominio):
     fp = webdriver.FirefoxOptions()
     fp.set_preference("network.cookie.cookieBehavior", 2)
     driver = webdriver.Firefox(options = fp)
+    driver.get("https://iherb.com/search/?kw="+palavra_chave)
 
     # LOGANDO PARA PODER ACESSAR PÁGINA DE QUEM AVALIOU O PRODUTO
     # login = input("Login")
@@ -388,7 +412,7 @@ def coletaElemento(palavra_chave, dominio):
     avaliacoes = pd.DataFrame()
     profiles = pd.DataFrame()
 
-    pag = 1
+    # pag = 1
 
     while True:
         # CONFIGURAÇÃO PRA AGUARDAR A PAG CARREGAR ANTES DE TENTAR PEGAR OS RESULTS
@@ -445,14 +469,14 @@ def coletaElemento(palavra_chave, dominio):
             # if (ratings >= 10):  ##CORRIGINDO POSSÍEVIS PROBLEMSA DE CONVERSÃO DE DECIMAIS
             #     ratings = ratings / 10
 
-            ratings = float(item.find_element(By.XPATH, ".//div/a[@class='rating']").get_attribute("title").split("/")[0])
-            ratings_num = int(item.find_element(By.XPATH, ".//div/a[@class='rating']").get_attribute("title").split(" ")[-2])
+            ratings = float(item.find_element(By.XPATH, ".//div/a[@class='rating-count scroll-to']").get_attribute("title").split("/")[0])
+            ratings_num = int(item.find_element(By.XPATH, ".//div/a[@class='rating-count scroll-to']").get_attribute("title").split(" ")[-2].replace(',', '').replace('.', ''))
 
             # LINK DE CADA PRODUTO
             link = item.find_element('xpath', './/div/a[@class="absolute-link product-link"]').get_attribute("href")
 
             # LINK DA IMAGEM -> DEPOIS BAIXAR O ARQUIVO
-            img = item.find_element('xpath', ".//div[@class='product-image-wrapper]").get_attribute("src")
+            img = item.find_element('xpath', ".//div[@class='product-image-wrapper']").get_attribute("src")
 
             # # INSERÇÃO NO BANCO DE DADOS
             # try:
@@ -481,7 +505,7 @@ def coletaElemento(palavra_chave, dominio):
             # ACESSANDO PÁGINA DE AVALIAÇÃO DO PRODUTO (SE HOUVER - SE FOR O CASO DE TER AVALIAÇÃO MAS SEM COMENTÁRIO, VAI SÓ ABRIR E FECHAR)
             # DENTRO DA FUNÇÃO FAZ A INSERÇÃO NO BANCO
             if ratings > 0:  #### trocar pra pegar avalições com análise (como checar?) , esse aqui verifica só a qtde notas
-                link_review = item.find_element(By.XPATH, ".//a[@class='rating-count scroll-to'").get_attribute("href")
+                link_review = item.find_element(By.XPATH, ".//a[@class='rating-count scroll-to']").get_attribute("href")
                 tempAvaliacoes = coletaReviewAux(link_review, dominio)
                 if not tempAvaliacoes.empty:
                     avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
@@ -558,7 +582,7 @@ def coletaElemento(palavra_chave, dominio):
 palavra_chave = "buttermilk"
 
 #### .com.br, .com, .co.uk, .ca, .de (buttermilch), .fr (lait ribot), .com.mx, .it, .es (mazada, suero de mantequilla), .co.jp, .sg, .ae, .com.au, .in, .nl, .sa, .com.tu, .se, .pl, .com.be, .eg, .at,
-site = ".com"
+dominio = ".com"
 
 coletaElemento(palavra_chave, site)
 
