@@ -18,15 +18,15 @@ import re
 locale.setlocale(locale.LC_ALL, 'pt_BR')
 
 # Define the proxy server
-global PROXY
-PROXY = "50.207.199.80:80"
+# global PROXY
+# PROXY = "50.207.199.80:80"
 
 # Set ChromeOptions()
 global options
 options = webdriver.FirefoxOptions()
 
 # Add the proxy as argument
-options.add_argument("--proxy-server=%s" % PROXY)
+# options.add_argument("--proxy-server=%s" % PROXY)
 
 
 # # INICIANDO CONEXÃO COM O BANCO DE DADOS
@@ -46,6 +46,14 @@ options.add_argument("--proxy-server=%s" % PROXY)
 # for x in cursor: print(x)
 # cursor.close()
 # mydb.close() #close the connection
+
+
+#PARA CONSEGUIR PEGAR AS IMAGENS DE PERFIL, O IHERB PARECE ESTAR BARRANDO O URLLIB
+global opener
+opener = urllib.request.build_opener()
+opener.addheaders = [('User-Agent', 'MyApp/1.0')]
+urllib.request.install_opener(opener)
+
 
 def coletaReview(link_review, dominio):
     driver = webdriver.Firefox(options=options)
@@ -99,14 +107,14 @@ def coletaReview(link_review, dominio):
         # EXTRAINDO DATA AVALIAÇÃO
         # review_date = ' '.join(review_element.find_element(By.CLASS_NAME, 'review-date').text.split()[-5:])
         # review_date = datetime.strptime(review_date, "%d de %B de %Y").strftime("%Y/%m/%d")
-        review_date = review_element.find_element(By.XPATH, './/span[@data-testid="review-date"]').text.strip()
+        review_date = review_element.find_element(By.XPATH, './/span[@data-testid="review-posted-date"]').text.strip()
 
         # EXTRAINDO PAÍS AVALIAÇÃO
         # review_country = review_element.find_element(By.CLASS_NAME, 'review-date').text.split()  ##arrumar
 
         # EXTRAINDO LINK E IMAGEM DO PERFIL PARA COLETA SEGUINTE
         try:
-            profile_link = review_element.find_element(By.CLASS_NAME, './/div/a[@class="MuiTypography-root MuiTypography-body1 css-ehmaku"]').get_attribute("href")
+            profile_link = review_element.find_element(By.XPATH, './/div/a[@class="MuiTypography-root MuiTypography-body1 css-ehmaku"]').get_attribute("href")
             profile_id = profile_link.split('/')[-1]
             try:
                 review_element.find_element(By.XPATH, ".//div/svg[@data-testid='PersonIcon']")
@@ -117,7 +125,7 @@ def coletaReview(link_review, dominio):
                 profile_img = review_element.find_element(By.XPATH,
                                                           ".//div/img[@class='MuiAvatar-img css-1hy9t21']").get_attribute(
                     "src")
-                author_img = re.sub("/s.jpeg", "/g.jpeg", profile_img)
+                author_img = re.sub("/s.jpeg", "/l.jpeg", profile_img)
 
                 urllib.request.urlretrieve(author_img,
                                            "results/profile_img/iherb" + dominio + "_" + profile_id + ".jpeg")
@@ -250,11 +258,152 @@ def coletaReviewAux(link_review, dominio):
     #     mydb.rollback()
     #     print(e)
 
-    review = pd.DataFrame()
-    for link in review_links:
-        review = pd.concat([review, coletaReview(link, dominio)], ignore_index=True)
+    # review = pd.DataFrame()
+    # for link in review_links:
+    #     review = pd.concat([review, coletaReview(link, dominio)], ignore_index=True)
 
-    return review  # , profiles
+    # return review  # , profiles
+    
+    return pd.DataFrame(data = review_links, columns = ["link"])
+
+
+def coletaReviewNew(link_review, dominio):
+    driver = webdriver.Firefox(options=options)
+    # numPag = 1
+    #
+    # # PÁGINA DAS AVALIAÇÕES DO PRODUTO
+    # link_reviews = 'https://www.amazon' + dominio + '/product-reviews/' + asin + '?pageNumber='
+    # driver.get(link_reviews + str(numPag))
+    # try:
+    #     driver.find_element(By.ID, "sp-cc-acceptall-link").click()
+    # except NoSuchElementException:
+    #     pass
+
+    driver.get(link_review)
+
+    # INICIANDO LISTA PARA ARMAZENAR
+    product_review = []
+    link_produto = driver.find_element(By.XPATH, ".//div/a[@class='MuiTypography-root MuiTypography-inherit MuiLink-root MuiLink-underlineAlways css-1o1ny0d']").get_attribute("href")
+    asin = re.split('/', link_produto)[-1]
+
+
+    # PEGANDO CADA CARD DE AVALIAÇÃO
+    while True:
+        time.sleep(3)
+        
+        try:
+            js_string = "var element = document.getElementById('px-captcha-wrapper');element.remove();"
+            driver.execute_script(js_string)
+        except:
+            pass
+        
+        #
+        # # PEGANDO CADA CARD DE AVALIAÇÃO
+        # review_elements = driver.find_elements(By.CSS_SELECTOR, '[id*=review-card]')
+        try:
+            # pag = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/div[@class="MuiBox-root css-i9gxme"]')))
+            review_elements = WebDriverWait(driver, 10).until(
+                EC.presence_of_all_elements_located((By.XPATH, './/div[@class="MuiBox-root css-1v71s4n"]')))
+        except:
+            break
+        # if not review_elements:
+        #     break
+        for review_element in review_elements:
+            # EXTRAINDO LINK DA POSTAGEM
+            review_link = review_element.find_element(By.XPATH, './/div/a[@class="MuiTypography-root MuiTypography-inherit MuiLink-root MuiLink-underlineNone css-bvdvm5"]').get_attribute("href")
+            
+            author_name = review_element.find_element(By.XPATH, './/div/a[@class="MuiTypography-root MuiTypography-body1 css-ehmaku"]').text.strip()
+
+            # EXTRAIR TÍTULO AVALIAÇÃO
+            review_title = review_element.find_element(By.XPATH, './/span[@class="MuiTypography-root MuiTypography-body1 css-1dbe95"]').text.strip()
+
+            # EXTRAINDO TEXTO AVALIAÇÃO
+            review_text = review_element.find_element(By.XPATH, './/div[@data-testid="review-text"]').text.strip()
+
+            # EXTRAINDO NOTA E JÁ CONVERTENDO O DECIMAL
+            # review_star = float(
+            #     review_element.find_element(By.CLASS_NAME, "a-icon-alt").get_attribute("textContent").split()[0].replace(
+            #         ',', '.'))
+
+            # EXTRAINDO DATA AVALIAÇÃO
+            # review_date = ' '.join(review_element.find_element(By.CLASS_NAME, 'review-date').text.split()[-5:])
+            # review_date = datetime.strptime(review_date, "%d de %B de %Y").strftime("%Y/%m/%d")
+            review_date = review_element.find_element(By.XPATH, './/span[@data-testid="review-posted-date"]').text.strip()
+
+            # EXTRAINDO PAÍS AVALIAÇÃO
+            # review_country = review_element.find_element(By.CLASS_NAME, 'review-date').text.split()  ##arrumar
+
+            # EXTRAINDO LINK E IMAGEM DO PERFIL PARA COLETA SEGUINTE
+            try:
+                profile_link = review_element.find_element(By.XPATH, './/div/a[@class="MuiTypography-root MuiTypography-body1 css-ehmaku"]').get_attribute("href")
+                profile_id = profile_link.split('/')[-1]
+                try:
+                    review_element.find_element(By.XPATH, ".//div/svg[@data-testid='PersonIcon']")
+                    profile_img = ""
+                    author_img = ""
+                except NoSuchElementException:
+                    # SALVANDO A IMG PRA NÃO DEPENDER DE INTERNET PRO PROCESSAMENTO DA MESMA
+                    profile_img = review_element.find_element(By.XPATH,
+                                                              ".//div/img[@class='MuiAvatar-img css-1hy9t21']").get_attribute(
+                        "src")
+                    author_img = re.sub("/s.jpeg", "/l.jpeg", profile_img)
+
+                    urllib.request.urlretrieve(author_img,
+                                               "results/profile_img/iherb" + dominio + "_" + profile_id + ".jpeg")
+
+                # profiles = pd.concat([profiles, coletaPerfil(profile_link, review_country)], ignore_index=True)
+            except NoSuchElementException:
+                profile_link, profile_id, author_img = None, None, None
+
+            try:
+                review_img = review_element.find_element(By.XPATH, './/div/img[@class="css-1u8hqvf"]').get_attribute("src")
+            except NoSuchElementException:
+                review_img = None
+
+            # if profile_link:
+            #     coletaPerfil(profile_link, review_country)
+
+            product_review.append(
+                (dominio, review_link, review_title, review_text, review_img, author_name, author_img, review_date,
+                 link_review, profile_link, profile_id, link_produto, asin))
+                
+        try:
+            driver.find_element(By.XPATH, ".//button[@aria-label='Go to next page' and disabled='']")
+        except NoSuchElementException:
+            pass
+                
+        try:
+            driver.find_element(By.XPATH, ".//button[@aria-label='Go to next page']").click()
+        except:
+            break
+
+        # try:
+        #     WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH, ".//div[@id='cm_cr-pagination_bar']/ul/li[@class='a-last']"))).click()
+        # except:
+        #     break
+
+    driver.close()
+
+    # ENVIANDO PARA O BANCO DE DADOS
+    # try:
+    #     sql = 'insert into teste.tbl_avaliacoes (dominio, asin, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+    #     cursor.executemany(sql, product_review)
+    #     print(f"Avaliações do produto {asin} inseridas")
+    #     mydb.commit()
+    # except pymysql.Error as e:
+    #     mydb.rollback()
+    #     print(e)
+
+    # review = pd.DataFrame()
+    # for link in review_links:
+    #     review = pd.concat([review, coletaReview(link, dominio)], ignore_index=True)
+
+    # return review  # , profiles
+    
+    return pd.DataFrame(data = product_review,
+                        columns = ["dominio", "review_link", "review_title", "review_text", "review_img", "author_name", "author_img", "review_date",
+     "link_review", "profile_link", "profile_id", "link_produto", "asin"])
+
 
 def coletaDetalhes(url, dominio, review=False):
     driver = webdriver.Firefox()
@@ -498,15 +647,15 @@ def coletaElemento(palavra_chave, dominio):
             #     if not auxDetalhes.empty:
             #         product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
 
-            auxDetalhes = coletaDetalhes(link, dominio)
-            if not auxDetalhes.empty:
-                product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
+            # auxDetalhes = coletaDetalhes(link, dominio)
+            # if not auxDetalhes.empty:
+            #     product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
 
             # ACESSANDO PÁGINA DE AVALIAÇÃO DO PRODUTO (SE HOUVER - SE FOR O CASO DE TER AVALIAÇÃO MAS SEM COMENTÁRIO, VAI SÓ ABRIR E FECHAR)
             # DENTRO DA FUNÇÃO FAZ A INSERÇÃO NO BANCO
             if ratings > 0:  #### trocar pra pegar avalições com análise (como checar?) , esse aqui verifica só a qtde notas
                 link_review = item.find_element(By.XPATH, ".//a[@class='rating-count scroll-to']").get_attribute("href")
-                tempAvaliacoes = coletaReviewAux(link_review, dominio)
+                tempAvaliacoes = coletaReviewNew(link_review, dominio)
                 if not tempAvaliacoes.empty:
                     avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
                     # for link_perfil in tempAvaliacoes.link_perfil:
@@ -584,7 +733,7 @@ palavra_chave = "buttermilk"
 #### .com.br, .com, .co.uk, .ca, .de (buttermilch), .fr (lait ribot), .com.mx, .it, .es (mazada, suero de mantequilla), .co.jp, .sg, .ae, .com.au, .in, .nl, .sa, .com.tu, .se, .pl, .com.be, .eg, .at,
 dominio = ".com"
 
-coletaElemento(palavra_chave, site)
+coletaElemento(palavra_chave, dominio)
 
 # coletaReview("B07HM62FL3")
 
