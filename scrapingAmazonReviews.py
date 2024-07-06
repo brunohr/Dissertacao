@@ -10,6 +10,8 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import StaleElementReferenceException
+from selenium.webdriver.common.action_chains import ActionChains
 
 import urllib.request
 
@@ -17,22 +19,24 @@ import re
 
 locale.setlocale(locale.LC_ALL, 'pt_BR')
 
+locale.setlocale(locale.LC_ALL, 'pt_BR')
+
 # Define the proxy server
-global PROXY
-PROXY = "50.207.199.80:80"
+# global PROXY
+# PROXY = "50.207.199.80:80"
 
 # Set ChromeOptions()
 global options
 options = webdriver.FirefoxOptions()
 
 # Add the proxy as argument
-options.add_argument("--proxy-server=%s" % PROXY)
+# options.add_argument("--proxy-server=%s" % PROXY)
 
-# # INICIANDO CONEXÃO COM O BANCO DE DADOS
-# global mydb, cursor
-# mydb = pymysql.connect(host="localhost", database='teste', user="root", passwd="@Bruno123",
-#                        cursorclass=pymysql.cursors.DictCursor)
-# cursor = mydb.cursor()
+# INICIANDO CONEXÃO COM O BANCO DE DADOS
+global mydb, cursor
+mydb = pymysql.connect(host="localhost", database='scraping2', user="root", passwd="", port = 3307,
+                       cursorclass=pymysql.cursors.DictCursor)
+cursor = mydb.cursor()
 
 # cursor.execute('select * from teste.tbl_produtos')
 # res = cursor.fetchall()
@@ -45,185 +49,325 @@ options.add_argument("--proxy-server=%s" % PROXY)
 # for x in cursor: print(x)
 # cursor.close()
 # mydb.close() #close the connection
+#
+# def coletaReview(link_review, dominio):
+#     driver = webdriver.Firefox(options=options)
+#
+#     driver.get(link_review)
+#     try:
+#         driver.find_element(By.ID, "sp-cc-rejectall-link").click()
+#     except NoSuchElementException:
+#         pass
+#
+#     link_produto = driver.find_element(By.CSS_SELECTOR, "a[data-hook='product-link']").get_attribute("href")
+#     asin = re.split('/dp/|/ref', link_produto)[1]
+#
+#     # print(" - Reviews: " + asin)
+#
+#     # INICIANDO LISTA PARA ARMAZENAR
+#     product_review = []
+#
+#     # PEGANDO CADA CARD DE AVALIAÇÃO
+#     while True:
+#         # time.sleep(3)
+#         # coletaDetalhes(link, dominio)
+#         # # PEGANDO CADA CARD DE AVALIAÇÃO
+#         # review_elements = driver.find_elements(By.CSS_SELECTOR, '[id*=review-card]')
+#         try:
+#             review_element = WebDriverWait(driver, 3).until(
+#                 EC.presence_of_element_located((By.ID, "cm_cr-review_list")))
+#         except:
+#             break
+#
+#         # EXTRAINDO NOME DO AUTOR
+#         author_name = review_element.find_element(By.CLASS_NAME, 'a-profile-name').text.strip()
+#
+#         # EXTRAIR TÍTULO AVALIAÇÃO
+#         review_title = review_element.find_element(By.CLASS_NAME, 'review-title-content').text.strip()
+#
+#         # EXTRAINDO TEXTO AVALIAÇÃO
+#         review_text = review_element.find_element(By.CLASS_NAME, 'review-text').text.strip()
+#
+#         # EXTRAINDO NOTA E JÁ CONVERTENDO O DECIMAL
+#         review_star = float(
+#             review_element.find_element(By.CLASS_NAME, "a-icon-alt").get_attribute("textContent").split()[0].replace(
+#                 ',', '.'))
+#
+#         # EXTRAINDO DATA AVALIAÇÃO
+#         # review_date = ' '.join(review_element.find_element(By.CLASS_NAME, 'review-date').text.split()[-5:])
+#         # review_date = datetime.strptime(review_date, "%d de %B de %Y").strftime("%Y/%m/%d")
+#         review_date = review_element.find_element(By.CLASS_NAME, 'review-date').text.strip()
+#
+#         # EXTRAINDO PAÍS AVALIAÇÃO
+#         review_country = review_element.find_element(By.CLASS_NAME, 'review-date').text.split()  ##arrumar
+#
+#         # EXTRAINDO LINK E IMAGEM DO PERFIL PARA COLETA SEGUINTE
+#         try:
+#             profile_link = review_element.find_element(By.CLASS_NAME, 'a-profile').get_attribute("href")
+#             profile_id = profile_link.split('.')[-1].split('/')[0]
+#             profile_img = review_element.find_element(By.XPATH, ".//div/div/img[@class='']").get_attribute("src")
+#             author_img = re.sub(r"SX.*_", "", profile_img)
+#             # SALVANDO A IMG PRA NÃO DEPENDER DE INTERNET PRO PROCESSAMENTO DA MESMA
+#             if "default._" not in profile_img:
+#                 urllib.request.urlretrieve(author_img,
+#                                            "results/profile_img/amazon" + dominio + "_" + profile_id + ".png")
+#             # profiles = pd.concat([profiles, coletaPerfil(profile_link, review_country)], ignore_index=True)
+#         except NoSuchElementException:
+#             profile_link, profile_id, author_img = None, None, None
+#
+#         try:
+#             review_img = review_element.find_element(By.XPATH, './/img[@class="review-image-tile"]').get_attribute(
+#                 "src")
+#         except NoSuchElementException:
+#             review_img = None
+#
+#         # if profile_link:
+#         #     coletaPerfil(profile_link, review_country)
+#
+#         product_review.append(
+#             (dominio, review_title, review_text, review_img, review_star, author_name, author_img, review_date,
+#              review_country, link_review, profile_link, profile_id, link_produto, asin))
+#         break
+#         # print("ASIN: ", asin)
+#         # print("Title: ", review_title)
+#         # print("Review: ", review_text)
+#         # print("Stars: ", review_star)
+#         # print("Author: ", author_name)
+#         # print("Review Date: ", review_date)
+#         # print("\n")
+#
+#     # PASSAR PRA PRÓXIMA PAG
+#     # try:
+#     #     driver.find_element(By.CLASS_NAME, 'a-pagination').find_element(By.CLASS_NAME, "a-last").click()
+#     # except NoSuchElementException:
+#     #     break
+#     # try:
+#     #     driver.find_element(By.CLASS_NAME, "a-disabled a-last")
+#     # except NoSuchElementException:
+#     #     break
+#
+#     driver.close()
+#
+#     # ENVIANDO PARA O BANCO DE DADOS
+#     # try:
+#     #     sql = 'insert into teste.tbl_avaliacoes (dominio, asin, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+#     #     cursor.executemany(sql, product_review)
+#     #     print(f"Avaliações do produto {asin} inseridas")
+#     #     mydb.commit()
+#     # except pymysql.Error as e:
+#     #     mydb.rollback()
+#     #     print(e)
+#
+#     # SALVANDO AS LISTAS EM DF
+#     review = pd.DataFrame(data=product_review,
+#                           columns=['dominio', 'title', 'text', 'img', 'star', 'user', 'user_img', 'date', 'country',
+#                                    'link_avaliacao',
+#                                    'link_perfil', 'id_perfil', 'link_produto', 'asin'])
+#
+#     return review  # , profiles
+#
+# def coletaReviewAux(asin, dominio):
+#     driver = webdriver.Firefox(options=options)
+#     numPag = 1
+#
+#     # PÁGINA DAS AVALIAÇÕES DO PRODUTO
+#     link_reviews = 'https://www.amazon' + dominio + '/product-reviews/' + asin + '?pageNumber='
+#     driver.get(link_reviews + str(numPag))
+#     try:
+#         driver.find_element(By.ID, "sp-cc-acceptall-link").click()
+#     except NoSuchElementException:
+#         pass
+#
+#     # INICIANDO LISTA PARA ARMAZENAR
+#     review_links = []
+#
+#     # PEGANDO CADA CARD DE AVALIAÇÃO
+#     while True:
+#         # time.sleep(3)
+#         #
+#         # # PEGANDO CADA CARD DE AVALIAÇÃO
+#         # review_elements = driver.find_elements(By.CSS_SELECTOR, '[id*=review-card]')
+#         try:
+#             pag = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'cm_cr-review_list')))
+#             review_elements = WebDriverWait(pag, 10).until(
+#                 EC.presence_of_all_elements_located((By.CSS_SELECTOR, '[id*=review-card]')))
+#         except:
+#             break
+#         # if not review_elements:
+#         #     break
+#         for review_element in review_elements:
+#             # EXTRAINDO LINK DA POSTAGEM
+#             review_link = review_element.find_element(By.CLASS_NAME, 'review-title-content').get_attribute("href")
+#             if review_link:
+#                 review_links.append(review_link)
+#         numPag += 1
+#         driver.get(link_reviews + str(numPag))
+#         # try:
+#         #     WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH, ".//div[@id='cm_cr-pagination_bar']/ul/li[@class='a-last']"))).click()
+#         # except:
+#         #     break
+#
+#     driver.close()
+#
+#     # ENVIANDO PARA O BANCO DE DADOS
+#     # try:
+#     #     sql = 'insert into teste.tbl_avaliacoes (dominio, asin, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+#     #     cursor.executemany(sql, product_review)
+#     #     print(f"Avaliações do produto {asin} inseridas")
+#     #     mydb.commit()
+#     # except pymysql.Error as e:
+#     #     mydb.rollback()
+#     #     print(e)
+#
+#     review = pd.DataFrame()
+#     for link in review_links:
+#         review = pd.concat([review, coletaReview(link, dominio)], ignore_index=True)
+#
+#     return review  # , profiles
 
-def coletaReview(link_review, dominio):
-    driver = webdriver.Firefox(options = options)
 
-    driver.get(link_review)
+def coletaReviewNew(data_asin, dominio):
+    # options.headless = True
+    numPag = 1
+
+    #### PÁGINA DAS AVALIAÇÕES DO PRODUTO
+    link_reviews = 'https://www.amazon' + dominio + '/product-reviews/' + data_asin + '?pageNumber='
+
+    driver2 = webdriver.Firefox(options=options)
+    driver2.get(link_reviews + str(numPag))
+
     try:
-        driver.find_element(By.ID, "sp-cc-rejectall-link").click()
+        driver2.find_element(By.ID, "sp-cc-acceptall-link").click()
     except NoSuchElementException:
         pass
-
-    link_produto = driver.find_element(By.CSS_SELECTOR, "a[data-hook='product-link']").get_attribute("href")
-    asin = re.split('/dp/|/ref', link_produto)[1]
-
-    # print(" - Reviews: " + asin)
 
     # INICIANDO LISTA PARA ARMAZENAR
     product_review = []
+    link_produto = driver2.find_element(By.XPATH, ".//a[@data-hook='product-link']").get_attribute("href")
+    codigo = data_asin
 
-    # PEGANDO CADA CARD DE AVALIAÇÃO
+    # time.sleep(3)
+
+    #### PEGANDO CADA CARD DE AVALIAÇÃO
     while True:
-        # time.sleep(3)
-        # coletaDetalhes(link, dominio)
-        # # PEGANDO CADA CARD DE AVALIAÇÃO
-        # review_elements = driver.find_elements(By.CSS_SELECTOR, '[id*=review-card]')
+        #### TENTANDO CONTORNAR StaleElementReferenceException
         try:
-            review_element = WebDriverWait(driver, 3).until(
-                EC.presence_of_element_located((By.ID, "cm_cr-review_list")))
+            WebDriverWait(driver2, 3).until(
+                EC.presence_of_element_located((By.XPATH, ".//div[@class='a-section a-spacing-none reviews-content a-size-base']")))
         except:
             break
 
-        # EXTRAINDO NOME DO AUTOR
-        author_name = review_element.find_element(By.CLASS_NAME, 'a-profile-name').text.strip()
+        # # PEGANDO CADA CARD DE AVALIAÇÃO
 
-        # EXTRAIR TÍTULO AVALIAÇÃO
-        review_title = review_element.find_element(By.CLASS_NAME, 'review-title-content').text.strip()
-
-        # EXTRAINDO TEXTO AVALIAÇÃO
-        review_text = review_element.find_element(By.CLASS_NAME, 'review-text').text.strip()
-
-        # EXTRAINDO NOTA E JÁ CONVERTENDO O DECIMAL
-        review_star = float(
-            review_element.find_element(By.CLASS_NAME, "a-icon-alt").get_attribute("textContent").split()[0].replace(
-                ',', '.'))
-
-        # EXTRAINDO DATA AVALIAÇÃO
-        # review_date = ' '.join(review_element.find_element(By.CLASS_NAME, 'review-date').text.split()[-5:])
-        # review_date = datetime.strptime(review_date, "%d de %B de %Y").strftime("%Y/%m/%d")
-        review_date = review_element.find_element(By.CLASS_NAME, 'review-date').text.strip()
-
-        # EXTRAINDO PAÍS AVALIAÇÃO
-        review_country = review_element.find_element(By.CLASS_NAME, 'review-date').text.split()  ##arrumar
-        
-        # EXTRAINDO LINK E IMAGEM DO PERFIL PARA COLETA SEGUINTE
-        try:
-            profile_link = review_element.find_element(By.CLASS_NAME, 'a-profile').get_attribute("href")
-            profile_id = profile_link.split('.')[-1].split('/')[0]
-            profile_img = review_element.find_element(By.XPATH, ".//div/div/img[@class='']").get_attribute("src")
-            author_img = re.sub(r"SX.*_", "", profile_img)
-            # SALVANDO A IMG PRA NÃO DEPENDER DE INTERNET PRO PROCESSAMENTO DA MESMA
-            if "default._" not in profile_img:
-                urllib.request.urlretrieve(author_img, "results/profile_img/amazon"+dominio+"_"+profile_id+".png")
-            # profiles = pd.concat([profiles, coletaPerfil(profile_link, review_country)], ignore_index=True)
-        except NoSuchElementException:
-            profile_link, profile_id, author_img = None, None, None
-
-        
-
-        try:
-            review_img = review_element.find_element(By.XPATH, './/img[@class="review-image-tile"]').get_attribute(
-                "src")
-        except NoSuchElementException:
-            review_img = None
-
-        
-        # if profile_link:
-        #     coletaPerfil(profile_link, review_country)
-
-        product_review.append((dominio, review_title, review_text, review_img, review_star, author_name, author_img, review_date,
-                               review_country, link_review, profile_link, profile_id, link_produto, asin))
-        break
-        # print("ASIN: ", asin)
-        # print("Title: ", review_title)
-        # print("Review: ", review_text)
-        # print("Stars: ", review_star)
-        # print("Author: ", author_name)
-        # print("Review Date: ", review_date)
-        # print("\n")
-
-    # PASSAR PRA PRÓXIMA PAG
-    # try:
-    #     driver.find_element(By.CLASS_NAME, 'a-pagination').find_element(By.CLASS_NAME, "a-last").click()
-    # except NoSuchElementException:
-    #     break
-    # try:
-    #     driver.find_element(By.CLASS_NAME, "a-disabled a-last")
-    # except NoSuchElementException:
-    #     break
-
-    driver.close()
-
-    # ENVIANDO PARA O BANCO DE DADOS
-    # try:
-    #     sql = 'insert into teste.tbl_avaliacoes (dominio, asin, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-    #     cursor.executemany(sql, product_review)
-    #     print(f"Avaliações do produto {asin} inseridas")
-    #     mydb.commit()
-    # except pymysql.Error as e:
-    #     mydb.rollback()
-    #     print(e)
-
-    # SALVANDO AS LISTAS EM DF
-    review = pd.DataFrame(data=product_review,
-                          columns=['dominio', 'title', 'text', 'img', 'star', 'user', 'user_img', 'date', 'country', 'link_avaliacao',
-                                   'link_perfil', 'id_perfil', 'link_produto', 'asin'])
-
-    return review  # , profiles
-
-def coletaReviewAux(asin, dominio):
-    driver = webdriver.Firefox(options = options)
-    numPag = 1
-
-    # PÁGINA DAS AVALIAÇÕES DO PRODUTO
-    link_reviews = 'https://www.amazon' + dominio + '/product-reviews/' + asin + '?pageNumber='
-    driver.get(link_reviews + str(numPag))
-    try:
-        driver.find_element(By.ID, "sp-cc-acceptall-link").click()
-    except NoSuchElementException:
-        pass
-
-    # INICIANDO LISTA PARA ARMAZENAR
-    review_links = []
-
-    # PEGANDO CADA CARD DE AVALIAÇÃO
-    while True:
-        # time.sleep(3)
+        i, j = 0, 0
         #
-        # # PEGANDO CADA CARD DE AVALIAÇÃO
-        # review_elements = driver.find_elements(By.CSS_SELECTOR, '[id*=review-card]')
+        # time.sleep(1)
+
         try:
-            pag = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'cm_cr-review_list')))
-            review_elements = WebDriverWait(pag, 10).until(
-                EC.presence_of_all_elements_located((By.CSS_SELECTOR, '[id*=review-card]')))
+            # pag = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/div[@class="MuiBox-root css-i9gxme"]')))
+            review_elements = WebDriverWait(driver2, 10).until(
+                EC.presence_of_all_elements_located((By.XPATH, './/div[@data-hook="review"]')))
         except:
             break
-        # if not review_elements:
-        #     break
-        for review_element in review_elements:
-            # EXTRAINDO LINK DA POSTAGEM
-            review_link = review_element.find_element(By.CLASS_NAME, 'review-title-content').get_attribute("href")
-            if review_link:
-                review_links.append(review_link)
-        numPag += 1
-        driver.get(link_reviews + str(numPag))
-        # try:
-        #     WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH, ".//div[@id='cm_cr-pagination_bar']/ul/li[@class='a-last']"))).click()
-        # except:
-        #     break
 
-    driver.close()
+        while i < len(review_elements):
+            try:
+                review_element = WebDriverWait(driver2, 10).until(
+                    EC.presence_of_all_elements_located((By.XPATH, './/div[@data-hook="review"]')))[i]
+
+                review_id = review_element.get_attribute("id")
+
+                #### VERIFICA SE O COMENTÁRIO JÁ EXISTE NO BANCO
+                if cursor.execute("SELECT * FROM avaliacao where codigo_avaliacao = '" + str(review_id) + "';") > 0:
+                    #### SE SIM, VAI PRO PRÓXIMO
+                    continue
+
+                # EXTRAINDO LINK DA POSTAGEM
+                review_link = review_element.find_element(By.XPATH, './/*[@data-hook="review-title"]').get_attribute("href")
+
+                # EXTRAIR NOME AUTOR/USUÁRIO
+                author_name = review_element.find_element(By.XPATH, './/span[@class="a-profile-name"]').text.strip()
+
+                # EXTRAIR TÍTULO AVALIAÇÃO
+                review_title = review_element.find_element(By.XPATH, './/*[@data-hook="review-title"]').text.strip()
+
+                # EXTRAINDO TEXTO AVALIAÇÃO
+                review_text = review_element.find_element(By.XPATH, './/span[@data-hook="review-body"]').text.strip()
+
+                # EXTRAINDO NOTA E JÁ CONVERTENDO O DECIMAL
+                review_star = float(review_element.find_element(By.XPATH, ".//span[@class='a-icon-alt']").get_attribute("textContent").split()[0].replace(',', '.'))
+
+                # EXTRAINDO DATA AVALIAÇÃO
+                # review_date = ' '.join(review_element.find_element(By.CLASS_NAME, 'review-date').text.split()[-5:])
+                # review_date = datetime.strptime(review_date, "%d de %B de %Y").strftime("%Y/%m/%d")
+                review_date = review_element.find_element(By.XPATH, './/span[@data-hook="review-date"]').text.strip()
+
+                # EXTRAINDO PAÍS AVALIAÇÃO
+                # review_country = review_element.find_element(By.CLASS_NAME, 'review-date').text.strip  ##arrumar
+
+                # EXTRAINDO LINK E IMAGEM DO PERFIL PARA COLETA SEGUINTE
+                try:
+                    profile_link = review_element.find_element(By.XPATH, './/a[@class="a-profile"]').get_attribute("href")
+                    profile_id = profile_link.split('/')[5]
+                    ## VERIFICANDO SE É IMG PADRÃO / SEM IMG
+                    if "default" in review_element.find_element(By.XPATH, ".//div[@class='a-profile-avatar']/img").get_attribute("src"):
+                        profile_img = author_img = ""
+                    else:
+                        profile_img = review_element.find_element(By.XPATH, ".//div[@class='a-profile-avatar']/img").get_attribute("src")
+                        author_img = re.sub("SX48_", "", profile_img)
+                        # urllib.request.urlretrieve(author_img,
+                        #                            "results/profile_img/amazon" + dominio + "_" + profile_id + ".jpeg")
+
+                    # profiles = pd.concat([profiles, coletaPerfil(profile_link, review_country)], ignore_index=True)
+                except NoSuchElementException:
+                    profile_link, profile_id, author_img = None, None, None
+
+                try:
+                    review_img = review_element.find_element(By.XPATH,'.//img[@class="review-image-tile"]').get_attribute("src")
+                    review_img = re.sub("._SY88", "", review_img)
+                except NoSuchElementException:
+                    review_img = ""
+
+                product_review.append(
+                    (dominio, review_link, review_title, review_text, review_img, author_name, author_img, review_date,
+                     link_reviews, profile_link, profile_id, link_produto, codigo, review_id, review_star))
+
+                i += 1
+
+            except StaleElementReferenceException:
+                j += 1
+                print(str(len(product_review) - 1) + " " + str(j))
+
+        numPag += 1
+        driver2.get(link_reviews + str(numPag))
+
+    driver2.close()
 
     # ENVIANDO PARA O BANCO DE DADOS
     # try:
-    #     sql = 'insert into teste.tbl_avaliacoes (dominio, asin, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+    #     sql = 'insert into teste.tbl_avaliacoes (dominio, codigo, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
     #     cursor.executemany(sql, product_review)
-    #     print(f"Avaliações do produto {asin} inseridas")
+    #     print(f"Avaliações do produto {codigo} inseridas")
     #     mydb.commit()
     # except pymysql.Error as e:
     #     mydb.rollback()
     #     print(e)
 
-    review = pd.DataFrame()
-    for link in review_links:
-        review = pd.concat([review, coletaReview(link, dominio)], ignore_index=True)
+    # review = pd.DataFrame()
+    # for link in review_links:
+    #     review = pd.concat([review, coletaReview(link, dominio)], ignore_index=True)
 
-    return review  # , profiles
+    # return review  # , profiles
+
+    print(link_reviews, len(product_review))
+
+    return pd.DataFrame(data=product_review,
+                        columns=["dominio", "review_link", "review_title", "review_text", "review_img",
+                                 "author_name", "author_img", "review_date", "link_reviews", "profile_link", "profile_id", "link_produto", "codigo_produto", "codigo_avaliacao", "review_star"]).fillna("")
 
 
 def coletaDetalhes(url, dominio, review=False):
-    driver = webdriver.Firefox(options = options)
+    driver = webdriver.Firefox(options=options)
     # url = "https://www.amazon"+dominio+"/dp/"+asin
     driver.get(url)
 
@@ -255,19 +399,6 @@ def coletaDetalhes(url, dominio, review=False):
             marca = pag.find_element(By.ID, 'bylineInfo_feature_div').text.strip()
         except NoSuchElementException:
             marca = None
-
-    # DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
-    # try:
-    #     moeda = pag.find_element('xpath', './/span[@class="a-price-symbol"]').text.strip()
-    #     whole_price = pag.find_element('xpath', './/span[@class="a-price-whole"]').text.strip()
-    #     fraction_price = pag.find_element('xpath', './/span[@class="a-price-fraction"]').text.strip()
-    #     if whole_price.isnumeric() and fraction_price.isnumeric():
-    #         price = float(('.'.join([whole_price, fraction_price])))
-    #     else:
-    #         moeda, price = None, None
-    # except NoSuchElementException:
-    #     moeda, price = None, None
-    # # moeda, price = None, None
 
     try:
         price = pag.find_element(By.XPATH,
@@ -321,45 +452,29 @@ def coletaDetalhes(url, dominio, review=False):
             tag = driver.find_element(By.XPATH, './/ul/li[1]/span/a').text.strip()
         except NoSuchElementException:
             tag = None
-    # detalhes = pd.DataFrame(data=[[asin, overview, features, details]],
-    #                     columns=['asin', 'overview', 'features', 'details'])
 
-    # print(detalhes)
     driver.close()
 
-    # try:
-    #     if not review:
-    #         sql = 'insert into teste.tbl_detalhes (dominio, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-    #         cursor.execute(sql, (dominio, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents))
-    #     else:
-    #         sql = 'insert into teste.tbl_detalhes_review (dominio, asin, nome, marca, price, tag, overview, features, details, description, information, documents, review) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-    #         cursor.execute(sql, (dominio, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents, review))
-    #     print(f"Detalhes do produto {asin} inseridos")
-    #     mydb.commit()
-    # except pymysql.Error as e:
-    #     mydb.rollback()
-    #     print(e)
-
     return pd.DataFrame(data=[
-        [dominio, asin, nome, marca, moeda, price, tag, overview, features, details, description, information, documents,
+        [dominio, asin, nome, marca, moeda, price, tag, overview, features, details, description, information,
+         documents,
          review]],
-                        columns=['dominio', 'asin', 'nome', 'marca', 'moeda', 'price', 'tag', 'overview', 'features',
-                                 'details', 'description', 'information', 'documents', 'review'])
-
+        columns=['dominio', 'asin', 'nome', 'marca', 'moeda', 'price', 'tag', 'overview', 'features',
+                 'details', 'description', 'information', 'documents', 'review'])
 
 def coletaPerfil(link_perfil, dominio, coletaProdutos=False):
-    driver = webdriver.Firefox(options = options)
-    driver.get(link_perfil)
+    driver2 = webdriver.Firefox(options=options)
+    driver2.get(link_perfil)
     try:
-        driver.find_element(By.ID, "sp-cc-rejectall-link").click()
+        driver2.find_element(By.ID, "sp-cc-accepttall-link").click()
     except NoSuchElementException:
         pass
 
     while True:
         try:
-            pag = WebDriverWait(driver, 3).until(EC.visibility_of_element_located((By.ID, "profile_v5")))
+            pag = WebDriverWait(driver2, 3).until(EC.visibility_of_element_located((By.ID, "profile_v5")))
         except:
-            driver.close()
+            driver2.close()
             return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
         compras = pd.DataFrame()
@@ -368,35 +483,36 @@ def coletaPerfil(link_perfil, dominio, coletaProdutos=False):
 
         nome = pag.find_element(By.ID, "customer-profile-name-header").text.strip()
         imgAux = pag.find_element(By.XPATH, ".//img[@id='avatar-image']").get_attribute("src")
-         
+
         try:
             bio = pag.find_element(By.XPATH, ".//div[@class='a-section pw-bio']").text.strip()
         except NoSuchElementException:
             bio = None
 
-        # sql = "insert into profile values (%s, %s, %s, %s)"
-        # cursor.execute(sql, (link, nome, img, profile_country))
         if coletaProdutos:
             reviews = pag.find_elements(By.XPATH, './/a[@class="a-link-normal your-content-card"]')
+            driver3 = webdriver.Firefox()
             for review in reviews:
-                link_review = review.get_attribute("href")
-                auxReview = coletaReview(link_review, dominio)
-                lista_reviews = pd.concat([lista_reviews, auxReview], ignore_index=True)
 
-                # driver2 = webdriver.Firefox(options = options)
-                # driver2.get(link_review)
-                # link_produto = driver2.find_element(By.CSS_SELECTOR, "a[data-hook='product-link']").get_attribute("href")
-                # asin = re.split('/dp/|/ref', link_produto)[1]
-                # driver2.close()
-                compras = pd.concat([compras, coletaDetalhes(auxReview.link_produto[0], dominio, link_perfil)],
+                # link_review = review.get_attribute("href")
+                # auxReview = coletaReview(link_review, dominio)
+                # lista_reviews = pd.concat([lista_reviews, auxReview], ignore_index=True)
+                #
+                # # driver2 = webdriver.Firefox(options = options)
+                # # driver2.get(link_review)
+                # # link_produto = driver2.find_element(By.CSS_SELECTOR, "a[data-hook='product-link']").get_attribute("href")
+                # # asin = re.split('/dp/|/ref', link_produto)[1]
+                # # driver2.close()
+
+                link_review = review.get_attribute("href")
+                driver3.get(link_review)
+                link_produto = driver3.find_element(By.XPATH, ".//a[@data-hook='product-link']").get_attribute("href")
+
+                compras = pd.concat([compras, coletaDetalhes(link_produto, dominio, link_perfil)],
                                     ignore_index=True)
-        driver.get(imgAux)
-        try:
-            img = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/img'))).get_attribute("src")
-        except:
-            img = ""
-        driver.close()
-        profile = pd.DataFrame(data=[[nome, img, bio, link_perfil, id_perfil]],
+
+        driver2.close()
+        profile = pd.DataFrame(data=[[nome, "", bio, link_perfil, id_perfil]],
                                columns=['nome', 'img', 'bio', 'link', 'id_profile'])
         return profile, lista_reviews, compras
 
@@ -405,9 +521,8 @@ def coletaElemento(palavra_chave, dominio):
     today = date.today().strftime("%Y%m%d")
 
     # INICIALIZE O DRIVER DO SELENIUM
-    # driver = webdriver.Firefox(options = options)
 
-    driver = webdriver.Firefox(options = options)
+    driver = webdriver.Firefox(options=options)
 
     # LOGANDO PARA PODER ACESSAR PÁGINA DE QUEM AVALIOU O PRODUTO
     # login = input("Login")
@@ -428,7 +543,6 @@ def coletaElemento(palavra_chave, dominio):
     except NoSuchElementException:
         pass
 
-    #
     # # create WebElement for a search box
     # search_box = driver.find_element(By.ID, 'twotabsearchtextbox')  # type the keyword in searchbox
     # search_box.send_keys(palavra_chave)
@@ -437,21 +551,25 @@ def coletaElemento(palavra_chave, dominio):
     # search_button = driver.find_element(By.ID, 'nav-search-submit-button')  # click search_button
     # search_button.click()
 
-    # INICIANDO DATAFRAMES
+    #### INICIANDO DATAFRAMES
     product = pd.DataFrame()
     product_descr = pd.DataFrame()
     avaliacoes = pd.DataFrame()
     profiles = pd.DataFrame()
 
     while True:
-        # CONFIGURAÇÃO PRA AGUARDAR A PAG CARREGAR ANTES DE TENTAR PEGAR OS RESULTS
+        #### CONFIGURAÇÃO PRA AGUARDAR A PAG CARREGAR ANTES DE TENTAR PEGAR OS RESULTS
         items = WebDriverWait(driver, 3).until(
-            EC.presence_of_all_elements_located((By.XPATH, '//div[contains(@class, "s-result-item s-asin")]')))
+            EC.presence_of_all_elements_located((By.XPATH, './/div[contains(@class, "s-result-item s-asin")]')))
 
-        for item in items:
+        while len(items):
+            item = items.pop(0)
+
+            data_asin = item.get_attribute("data-asin")
 
             name = item.find_element('xpath', './/span[@class="a-size-base-plus a-color-base a-text-normal"]').text
 
+            #### VERIFICA SE É PAG DE MÚSICA
             try:
                 "mp3" in item.find_element('xpath',
                                            ".//a[@class='a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold']").text.strip()
@@ -474,9 +592,7 @@ def coletaElemento(palavra_chave, dominio):
             except NoSuchElementException:
                 pass
 
-            data_asin = item.get_attribute("data-asin")
-
-            # DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
+            #### DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
             moeda = item.find_elements('xpath', './/span[@class="a-price-symbol"]')
             moeda = moeda[0] if moeda else None
             whole_price = item.find_elements('xpath', './/span[@class="a-price-whole"]')
@@ -487,52 +603,34 @@ def coletaElemento(palavra_chave, dominio):
                 price = 0.0
             # price = None
 
-            # DESMEMBRANDO A AVALIAÇÃO - MANTENDO NA PÁG DE RESULTS PRA EVITAR UM LOOP COM A COLETA DE DETALHES VINDA DA PÁGINA DO USUÁRIO
+            #### DESMEMBRANDO A AVALIAÇÃO - MANTENDO NA PÁG DE RESULTS PRA EVITAR UM LOOP COM A COLETA DE DETALHES VINDA DA PÁGINA DO USUÁRIO
             ratings_box = item.find_elements('xpath', './/div[@class="a-row a-size-small"]/span')
             if ratings_box:
-                # ADAPTA OS PONTOS E VIRGULAS NOS NÚMEROS
+                #### ADAPTA OS PONTOS E VIRGULAS NOS NÚMEROS
                 ratings = locale.atof(ratings_box[0].get_attribute('aria-label').split()[0])
                 ratings_num = locale.atoi(ratings_box[1].text.replace(',', '').replace('.', ''))
             else:
                 ratings, ratings_num = 0.0, 0
 
-            if (ratings >= 10):  ##CORRIGINDO POSSÍEVIS PROBLEMSA DE CONVERSÃO DE DECIMAIS
+            if (ratings >= 10):  #### CORRIGINDO POSSÍVEIS PROBLEMSA DE CONVERSÃO DE DECIMAIS
                 ratings = ratings / 10
 
-            # LINK DE CADA PRODUTO
+            #### LINK DE CADA PRODUTO
             link = item.find_element('xpath', './/a[@class="a-link-normal s-no-outline"]').get_attribute("href")
 
-            # LINK DA IMAGEM -> DEPOIS BAIXAR O ARQUIVO
+            #### LINK DA IMAGEM -> DEPOIS BAIXAR O ARQUIVO
             img = item.find_element('class name', "s-image").get_attribute("src")
 
-            # # INSERÇÃO NO BANCO DE DADOS
-            # try:
-            #     # VERIFICAR SE JÁ EXISTE??
-            #     sql = 'insert into teste.tbl_produtos (dominio, asin, nome, preco, nota, num_avaliacoes, img, link) values (%s, %s, %s, %s, %s, %s, %s, %s)'
-            #     cursor.execute(sql, (dominio, data_asin, name, price, ratings, ratings_num, img, link))
-            #     print(f"Produto {data_asin} inserido")
-            # except pymysql.Error as e:
-            #     mydb.rollback()
-            #     print(e)
+            if not cursor.execute("SELECT a.produto_id, p.codigo FROM amazon AS a LEFT JOIN produto AS p ON p.codigo = '" + str(data_asin) + "';"):
+                auxDetalhes = coletaDetalhes(link, dominio)
+                if not auxDetalhes.empty:
+                    product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
 
-            # ACESSANDO PÁGINA DO PRODUTO, EXCETO SE FOR AMAZON MUSIC (E OS ANÚNCIOS?)
-            # DENTRO DA FUNÇÃO FAZ A INSERÇÃO NO BANCO
-            # try:
-            #     "mp3" in item.find_element('xpath', ".//a[@class='a-size-base a-link-normal s-underline-text s-underline-link-text s-link-style a-text-bold']").text.strip()
-            #     name = name + " (AMAZON MUSIC)"
-            # except NoSuchElementException:
-            #     auxDetalhes = coletaDetalhes(link, dominio)[0]
-            #     if not auxDetalhes.empty:
-            #         product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
-
-            auxDetalhes = coletaDetalhes(link, dominio)
-            if not auxDetalhes.empty:
-                product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
-
-            # ACESSANDO PÁGINA DE AVALIAÇÃO DO PRODUTO (SE HOUVER - SE FOR O CASO DE TER AVALIAÇÃO MAS SEM COMENTÁRIO, VAI SÓ ABRIR E FECHAR)
-            # DENTRO DA FUNÇÃO FAZ A INSERÇÃO NO BANCO
-            if ratings > 0:  #### trocar pra pegar avalições com análise (como checar?) , esse aqui verifica só a qtde notas
-                tempAvaliacoes = coletaReviewAux(data_asin, dominio)
+            #### VERIFICA SE O MESMO PRODUTO TEVE INCLUSÃO DE ANÁLISES
+            cursor.execute("SELECT avaliacoes FROM produto WHERE codigo = '" + str(data_asin) + "';")
+            comparaSql = cursor.fetchone()
+            if comparaSql == None or (ratings_num > comparaSql["avaliacoes"] and ratings_num > 0):
+                tempAvaliacoes = coletaReviewNew(data_asin, dominio)
                 if not tempAvaliacoes.empty:
                     avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
                     # for link_perfil in tempAvaliacoes.link_perfil:
@@ -543,7 +641,8 @@ def coletaElemento(palavra_chave, dominio):
                     #         avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
                     #     if not tempCompras.empty:
                     #         product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
-                
+
+
             # SALVANDO NO DATAFRAME
             product = pd.concat(
                 [product, pd.DataFrame(data=[[dominio, data_asin, name, moeda, price, ratings, ratings_num, img, link]],
@@ -551,16 +650,41 @@ def coletaElemento(palavra_chave, dominio):
                                                 'img', 'link'])],
                 ignore_index=True)
 
-            # INSERÇÃO NO BANCO DE DADOS
-            # try:
-            #     # VERIFICAR SE JÁ EXISTE??
-            #     sql = 'insert into teste.tbl_produtos (dominio, asin, nome, preco, nota, num_avaliacoes, img, link) values (%s, %s, %s, %s, %s, %s, %s, %s)'
-            #     cursor.execute(sql, (dominio, data_asin, name, price, ratings, ratings_num, img, link))
-            #     print(f"Produto {data_asin} inserido")
-            #     mydb.commit()
-            # except pymysql.Error as e:
-            #     print(e)
-            #     mydb.rollback()
+            # profiles = pd.concat([profiles, tempAvaliacoes[["author_name", "author_img", "profile_id", "profile_link", "review_date"]].drop_duplicates()], ignore_index=True)
+
+            try:
+                ####VERIFICAR VAZIOS
+                img = "" if not len(img) else img
+                auxSql = [name, data_asin, ratings, price, ratings_num, img, link]
+                cursor.execute("INSERT INTO produto (nome, codigo, nota, preco, avaliacoes, img, link, site_id) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT site_id FROM site WHERE nome = 'amazon' AND dominio = '" + str(dominio) + "' AND palavra_chave = '" + str(palavra_chave) + "' LIMIT 1));", auxSql)
+                cursor.fetchone()
+
+                if not auxDetalhes.empty:
+                    auxDetalhes.fillna("", inplace = True)
+                    auxSql = auxDetalhes.loc[:,['tag', 'marca', 'overview', 'features', 'details', 'description', 'information', 'documents']].values.flatten().tolist()
+
+                    cursor.execute("INSERT INTO amazon (tag, marca, overview, features, details, description, information, documents, produto_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, (SELECT produto_id FROM produto WHERE codigo = '" + str(data_asin) + "' LIMIT 1));", auxSql)
+                    cursor.fetchone()
+
+                    for perfil in range(len(tempAvaliacoes)):
+                        if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(tempAvaliacoes.loc[perfil]["profile_id"]) + "';"):
+                            auxSql = tempAvaliacoes.loc[perfil][["author_name", "author_img", "profile_id", "profile_link"]]
+                            cursor.execute("INSERT INTO usuario (nome, img, codigo_perfil, link,  site_id) VALUES (%s, %s, %s, %s, (SELECT site_id FROM site WHERE nome = 'amazon' AND dominio = '" + str(
+                                    dominio) + "' LIMIT 1));", auxSql.to_list())
+                            cursor.fetchone()
+                            profiles = pd.concat([profiles, auxSql.to_frame().T], ignore_index=True)
+
+                if not tempAvaliacoes.empty:
+                    tempAvaliacoes.fillna("", inplace = True)
+                    auxSql = tempAvaliacoes.loc[:,[
+                        "review_title", "review_text", "review_img", "author_name", "review_date", "review_date",
+                         "review_link"]].values.tolist()
+                    cursor.executemany(
+                        'INSERT INTO avaliacao (titulo, texto, img, autor, pais, dataavaliacao, link_avaliacao, produto_id, usuario_id) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT produto_id FROM produto WHERE codigo = "' + str(data_asin) + '" LIMIT 1), (SELECT usuario_id FROM usuario WHERE codigo_perfil = "' + str(2858) + '" LIMIT 1));', auxSql)
+                    cursor.fetchall()
+            except pymysql.Error as e:
+                print(e)
+                mydb.rollback()
 
         # for i in product_asin:
         #    coletaReview(i)
@@ -572,15 +696,10 @@ def coletaElemento(palavra_chave, dominio):
             break
         # paginacao.find_element(By.CLASS_NAME, "s-pagination-next").click()
 
-    # profiles = pd.DataFrame()
-    # for link in avaliacoes['link_perfil']:
-    #     if link:
-    #         profiles = pd.concat([profiles, coletaPerfil(link, dominio)], ignore_index=True)
-
-    # SALVANDO TUDO NO BANCO DE DADOS
-    # cursor.close()
-    # mydb.close()
-    # driver.close()
+    #### SALVANDO TUDO NO BANCO DE DADOS
+    cursor.close()
+    mydb.close()
+    driver.close()
 
     # final = product.merge(product_descr, on='asin', how='left')
 
@@ -593,14 +712,15 @@ def coletaElemento(palavra_chave, dominio):
     product.to_excel('results/amazon' + dominio + '_' + palavra_chave + '_(produtos)_' + today + '.xlsx', index=False)
     product_descr.to_excel('results/amazon' + dominio + '_' + palavra_chave + '_(detalhes)_' + today + '.xlsx',
                            index=False)
-    avaliacoes.to_excel('results/amazon' + dominio + '_' + palavra_chave + '_(avaliacoes)_' + today + '.xlsx', index=False)
+    avaliacoes.to_excel('results/amazon' + dominio + '_' + palavra_chave + '_(avaliacoes)_' + today + '.xlsx',
+                        index=False)
     profiles.to_excel('results/amazon' + dominio + '_' + palavra_chave + '_(perfis)_' + today + '.xlsx', index=False)
 
-    # for link_perfil in avaliacoes.link_perfil:
-    #     tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, dominio)
-    #     profiles = pd.concat([profiles, tempPerfil], ignore_index=True)
-    #     avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
-    #     product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
+    #### SALVANDO AS IMG DE PERFIL
+    for row in range(len(profiles)):
+        if profiles.loc[row]["author_img"]:
+            urllib.request.urlretrieve(profiles.loc[row]["author_img"],
+                                       "results/profile_img/amazon_" + profiles.loc[row]["profile_id"] + ".jpeg")
 
     return product, product_descr, avaliacoes, profiles
 
