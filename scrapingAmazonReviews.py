@@ -15,11 +15,8 @@ from selenium.webdriver.common.action_chains import ActionChains
 
 import urllib.request
 import requests
-from PIL import Image
 
 import re
-
-locale.setlocale(locale.LC_ALL, 'pt_BR')
 
 locale.setlocale(locale.LC_ALL, 'pt_BR')
 
@@ -262,8 +259,6 @@ def coletaReviewNew(data_asin, dominio):
         # # PEGANDO CADA CARD DE AVALIAÇÃO
 
         i, j = 0, 0
-        #
-        # time.sleep(1)
 
         try:
             # pag = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/div[@class="MuiBox-root css-i9gxme"]')))
@@ -344,22 +339,6 @@ def coletaReviewNew(data_asin, dominio):
         driver2.get(link_reviews + str(numPag))
 
     driver2.close()
-
-    # ENVIANDO PARA O BANCO DE DADOS
-    # try:
-    #     sql = 'insert into teste.tbl_avaliacoes (dominio, codigo, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-    #     cursor.executemany(sql, product_review)
-    #     print(f"Avaliações do produto {codigo} inseridas")
-    #     mydb.commit()
-    # except pymysql.Error as e:
-    #     mydb.rollback()
-    #     print(e)
-
-    # review = pd.DataFrame()
-    # for link in review_links:
-    #     review = pd.concat([review, coletaReview(link, dominio)], ignore_index=True)
-
-    # return review  # , profiles
 
     print(link_reviews, len(product_review))
 
@@ -668,21 +647,22 @@ def coletaElemento(palavra_chave, dominio):
                     cursor.execute("INSERT INTO amazon (tag, marca, overview, features, details, description, information, documents, produto_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, (SELECT produto_id FROM produto WHERE codigo = '" + str(data_asin) + "' LIMIT 1));", auxSql)
                     cursor.fetchone()
 
-                    for perfil in range(len(tempAvaliacoes)):
-                        if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(tempAvaliacoes.loc[perfil]["profile_id"]) + "';"):
-                            auxSql = tempAvaliacoes.loc[perfil][["author_name", "author_img", "profile_id", "profile_link"]]
-                            cursor.execute("INSERT INTO usuario (nome, img, codigo_perfil, link,  site_id) VALUES (%s, %s, %s, %s, (SELECT site_id FROM site WHERE nome = 'amazon' AND dominio = '" + str(
-                                    dominio) + "' LIMIT 1)) ON DUPLICATE KEY UPDATE img = '" + str(auxSql["author_img"]) + "';", auxSql.to_list())
-                            cursor.fetchone()
-                            profiles = pd.concat([profiles, auxSql.to_frame().T], ignore_index=True)
+                for perfil in range(len(tempAvaliacoes)):
+                    if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(tempAvaliacoes.loc[perfil]["profile_id"]) + "';"):
+                        auxSql = tempAvaliacoes.loc[perfil][["author_name", "author_img", "profile_id", "profile_link"]]
+                        cursor.execute("INSERT INTO usuario (nome, img, codigo_perfil, link,  site_id) VALUES (%s, %s, %s, %s, (SELECT site_id FROM site WHERE nome = 'amazon' AND dominio = '" + str(
+                                dominio) + "' LIMIT 1)) ON DUPLICATE KEY UPDATE img = '" + str(auxSql["author_img"]) + "';", auxSql.to_list())
+                        cursor.fetchone()
+                        profiles = pd.concat([profiles, auxSql.to_frame().T], ignore_index=True)
 
                 if 'tempAvaliacoes' in locals():
                     tempAvaliacoes.fillna("", inplace = True)
                     auxSql = tempAvaliacoes.loc[:,[
                         "review_title", "review_text", "review_img", "author_name", "review_date", "review_date",
-                         "review_link"]].values.tolist()
+                         "review_link", "profile_id"]].values.tolist()
+
                     cursor.executemany(
-                        'INSERT INTO avaliacao (titulo, texto, img, autor, pais, dataavaliacao, link_avaliacao, produto_id, usuario_id) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT produto_id FROM produto WHERE codigo = "' + str(data_asin) + '" LIMIT 1), (SELECT usuario_id FROM usuario WHERE codigo_perfil = "' + str(2858) + '" LIMIT 1));', auxSql)
+                        'INSERT INTO avaliacao (titulo, texto, img, autor, pais, dataavaliacao, link_avaliacao, produto_id, usuario_id) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT produto_id FROM produto WHERE codigo = "' + str(data_asin) + '" LIMIT 1), (SELECT usuario_id FROM usuario WHERE codigo_perfil = " %s " LIMIT 1));', auxSql)
                     cursor.fetchall()
 
                 mydb.commit()
@@ -706,12 +686,6 @@ def coletaElemento(palavra_chave, dominio):
     mydb.close()
     driver.close()
 
-    # final = product.merge(product_descr, on='asin', how='left')
-
-    # print(product)
-    # print(final)
-    # print(avaliacoes)
-
     # Salvando os dataframes em arquivos csv -> 'amazon' + pais + palavra_chave
     # final.to_csv('results/amazon'+dominio+'_'+palavra_chave+'_(produtos)_'+today+'.csv', index=False)
     print("Exportando para excel")
@@ -729,7 +703,7 @@ def coletaElemento(palavra_chave, dominio):
         if "" != profiles.loc[row]["author_img"]:
     #         urllib.request.urlretrieve(profiles.loc[row]["author_img"],
     #                                    "results/profile_img/amazon_" + profiles.loc[row]["profile_id"] + ".jpeg")
-            response = requests.get(url)
+            response = requests.get(profiles.loc[row]["author_img"])
             nome_img = "results/profile_img/amazon_" + profiles.loc[row]["profile_id"] + ".jpeg"
             # Verificar se a requisição foi bem-sucedida
             if response.status_code == 200:
@@ -741,9 +715,6 @@ def coletaElemento(palavra_chave, dominio):
             else:
                 print(f'Falha ao baixar a imagem. Status code: {response.status_code}')
 
-
-
-
     cursor.close()
     mydb.close()
 
@@ -752,7 +723,6 @@ def coletaElemento(palavra_chave, dominio):
 mydb = pymysql.connect(host="localhost", database='scraping2', user="root", passwd="", port = 3307,
                        cursorclass=pymysql.cursors.DictCursor)
 cursor = mydb.cursor()
-
 
 palavra_chave = "buttermilk"
 
