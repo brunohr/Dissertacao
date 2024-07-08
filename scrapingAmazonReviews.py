@@ -33,9 +33,16 @@ options = webdriver.FirefoxOptions()
 
 # INICIANDO CONEXÃO COM O BANCO DE DADOS
 global mydb, cursor
-# mydb = pymysql.connect(host="localhost", database='scraping2', user="root", passwd="", port = 3307,
-#                        cursorclass=pymysql.cursors.DictCursor)
-# cursor = mydb.cursor()
+mydb = pymysql.connect(host="localhost", database='scraping2', user="root", passwd="", port = 3307,
+                       cursorclass=pymysql.cursors.DictCursor)
+cursor = mydb.cursor()
+mydb.rollback()
+
+global opener
+opener = urllib.request.build_opener()
+opener.addheaders = [('User-Agent', 'MyApp/1.0')]
+urllib.request.install_opener(opener)
+
 
 # cursor.execute('select * from teste.tbl_produtos')
 # res = cursor.fetchall()
@@ -262,21 +269,22 @@ def coletaReviewNew(data_asin, dominio):
 
         try:
             # pag = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/div[@class="MuiBox-root css-i9gxme"]')))
-            review_elements = WebDriverWait(driver2, 10).until(
-                EC.presence_of_all_elements_located((By.XPATH, './/div[@data-hook="review"]')))
+            review_elements = WebDriverWait(driver2, 3).until(
+                EC.presence_of_all_elements_located((By.XPATH, './/div[@class="a-section review aok-relative"]')))
         except:
             break
 
         while i < len(review_elements):
             try:
-                review_element = WebDriverWait(driver2, 10).until(
-                    EC.presence_of_all_elements_located((By.XPATH, './/div[@data-hook="review"]')))[i]
+                review_element = WebDriverWait(driver2, 3).until(
+                    EC.presence_of_all_elements_located((By.XPATH, './/div[@class="a-section review aok-relative"]')))[i]
 
                 review_id = review_element.get_attribute("id")
 
                 #### VERIFICA SE O COMENTÁRIO JÁ EXISTE NO BANCO
                 if cursor.execute("SELECT * FROM avaliacao where codigo_avaliacao = '" + str(review_id) + "';") > 0:
                     #### SE SIM, VAI PRO PRÓXIMO
+                    i += 1
                     continue
 
                 # EXTRAINDO LINK DA POSTAGEM
@@ -310,7 +318,8 @@ def coletaReviewNew(data_asin, dominio):
                     if "default" in review_element.find_element(By.XPATH, ".//div[@class='a-profile-avatar']/img").get_attribute("src"):
                         profile_img = author_img = ""
                     else:
-                        profile_img = review_element.find_element(By.XPATH, ".//div[@class='a-profile-avatar']/img").get_attribute("src")
+
+                        profile_img = review_element.find_element(By.XPATH, ".//div[@class='a-profile-avatar']/img[@class='']").get_attribute("src")
                         author_img = re.sub("SX48_", "", profile_img)
                         # urllib.request.urlretrieve(author_img,
                         #                            "results/profile_img/amazon" + dominio + "_" + profile_id + ".jpeg")
@@ -326,14 +335,14 @@ def coletaReviewNew(data_asin, dominio):
                     review_img = ""
 
                 product_review.append(
-                    (dominio, review_link, review_title, review_text, review_img, author_name, author_img, review_date,
-                     link_reviews, profile_link, profile_id, link_produto, codigo, review_id, review_star))
-
-                i += 1
+                    (dominio, review_link, review_title, review_text, review_star, review_img, author_name, author_img, review_date,
+                     link_reviews, profile_link, profile_id, link_produto, codigo, review_id))
 
             except StaleElementReferenceException:
                 j += 1
                 print(str(len(product_review) - 1) + " " + str(j))
+
+            i+=1
 
         numPag += 1
         driver2.get(link_reviews + str(numPag))
@@ -343,8 +352,8 @@ def coletaReviewNew(data_asin, dominio):
     print(link_reviews, len(product_review))
 
     return pd.DataFrame(data=product_review,
-                        columns=["dominio", "review_link", "review_title", "review_text", "review_img",
-                                 "author_name", "author_img", "review_date", "link_reviews", "profile_link", "profile_id", "link_produto", "codigo_produto", "codigo_avaliacao", "review_star"]).fillna("")
+                        columns=["dominio", "review_link", "review_title", "review_text", "review_star", "review_img",
+                                 "author_name", "author_img", "review_date", "link_reviews", "profile_link", "profile_id", "link_produto", "codigo_produto", "codigo_avaliacao"]).fillna("")
 
 
 def coletaDetalhes(url, dominio, review=False):
@@ -608,21 +617,24 @@ def coletaElemento(palavra_chave, dominio):
                     product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
 
             #### VERIFICA SE O MESMO PRODUTO TEVE INCLUSÃO DE ANÁLISES
-            cursor.execute("SELECT avaliacoes FROM produto WHERE codigo = '" + str(data_asin) + "';")
-            comparaSql = cursor.fetchall()
-            if len(comparaSql) and ratings_num > 0:
-                if ratings_num > comparaSql[-1]["avaliacoes"]:
-                    tempAvaliacoes = coletaReviewNew(data_asin, dominio)
-                    if not tempAvaliacoes.empty:
-                        avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
-                        # for link_perfil in tempAvaliacoes.link_perfil:
-                        #     tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, dominio, False)
-                        #     if not tempPerfil.empty:
-                        #         profiles = pd.concat([profiles, tempPerfil], ignore_index=True)
-                        #     if not tempReview.empty:
-                        #         avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
-                        #     if not tempCompras.empty:
-                        #         product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
+            # cursor.execute("SELECT avaliacoes FROM produto WHERE codigo = '" + str(data_asin) + "';")
+            # comparaSql = cursor.fetchall()
+            # if len(comparaSql) and ratings_num > 0:
+            #     if ratings_num > comparaSql[-1]["avaliacoes"]:
+            if ratings_num > cursor.execute(
+                    "SELECT * FROM avaliacao WHERE produto_id = (SELECT produto_id FROM produto WHERE codigo = '" + str(
+                            data_asin) + "' LIMIT 1);"):
+                tempAvaliacoes = coletaReviewNew(data_asin, dominio)
+                if not tempAvaliacoes.empty:
+                    avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
+                    # for link_perfil in tempAvaliacoes.link_perfil:
+                    #     tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, dominio, False)
+                    #     if not tempPerfil.empty:
+                    #         profiles = pd.concat([profiles, tempPerfil], ignore_index=True)
+                    #     if not tempReview.empty:
+                    #         avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
+                    #     if not tempCompras.empty:
+                    #         product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
 
             # SALVANDO NO DATAFRAME
             product = pd.concat(
@@ -641,35 +653,38 @@ def coletaElemento(palavra_chave, dominio):
                 cursor.fetchone()
 
                 if 'auxDetalhes' in locals():
-                    auxDetalhes.fillna("", inplace = True)
-                    auxSql = auxDetalhes.loc[:,['tag', 'marca', 'overview', 'features', 'details', 'description', 'information', 'documents']].values.flatten().tolist()
+                    if not auxDetalhes.empty:
+                        auxDetalhes.fillna("", inplace = True)
+                        auxSql = auxDetalhes.loc[:,['tag', 'marca', 'overview', 'features', 'details', 'description', 'information', 'documents']].values.flatten().tolist()
 
                     cursor.execute("INSERT INTO amazon (tag, marca, overview, features, details, description, information, documents, produto_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, (SELECT produto_id FROM produto WHERE codigo = '" + str(data_asin) + "' LIMIT 1));", auxSql)
                     cursor.fetchone()
 
-                for perfil in range(len(tempAvaliacoes)):
-                    if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(tempAvaliacoes.loc[perfil]["profile_id"]) + "';"):
-                        auxSql = tempAvaliacoes.loc[perfil][["author_name", "author_img", "profile_id", "profile_link"]]
-                        cursor.execute("INSERT INTO usuario (nome, img, codigo_perfil, link,  site_id) VALUES (%s, %s, %s, %s, (SELECT site_id FROM site WHERE nome = 'amazon' AND dominio = '" + str(
-                                dominio) + "' LIMIT 1)) ON DUPLICATE KEY UPDATE img = '" + str(auxSql["author_img"]) + "';", auxSql.to_list())
-                        cursor.fetchone()
-                        profiles = pd.concat([profiles, auxSql.to_frame().T], ignore_index=True)
-
                 if 'tempAvaliacoes' in locals():
-                    tempAvaliacoes.fillna("", inplace = True)
-                    auxSql = tempAvaliacoes.loc[:,[
-                        "review_title", "review_text", "review_img", "author_name", "review_date", "review_date",
-                         "review_link", "profile_id"]].values.tolist()
+                    if not tempAvaliacoes.empty:
 
-                    cursor.executemany(
-                        'INSERT INTO avaliacao (titulo, texto, img, autor, pais, dataavaliacao, link_avaliacao, produto_id, usuario_id) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT produto_id FROM produto WHERE codigo = "' + str(data_asin) + '" LIMIT 1), (SELECT usuario_id FROM usuario WHERE codigo_perfil = " %s " LIMIT 1));', auxSql)
-                    cursor.fetchall()
+                        for perfil in range(len(tempAvaliacoes)):
+                            if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(tempAvaliacoes.loc[perfil]["profile_id"]) + "';"):
+                                auxSql = tempAvaliacoes.loc[perfil][["author_name", "author_img", "profile_id", "profile_link"]]
+                                cursor.execute("INSERT INTO usuario (nome, img, codigo_perfil, link,  site_id) VALUES (%s, %s, %s, %s, (SELECT site_id FROM site WHERE nome = 'amazon' AND dominio = '" + str(
+                                        dominio) + "' LIMIT 1)) ON DUPLICATE KEY UPDATE img = '" + str(auxSql["author_img"]) + "';", auxSql.to_list())
+                                cursor.fetchone()
+                                profiles = pd.concat([profiles, auxSql.to_frame().T], ignore_index=True)
+
+                        tempAvaliacoes.fillna("", inplace = True)
+                        auxSql = tempAvaliacoes.loc[:,[
+                            "review_title", "review_text", "review_star", "review_img", "author_name", "review_date", "review_date",
+                             "review_link", "codigo_avaliacao", "profile_id"]].values.tolist()
+                        cursor.executemany('INSERT INTO avaliacao (titulo, texto, nota, img, autor, pais, dataavaliacao, link_avaliacao, codigo_avaliacao, produto_id, usuario_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, (SELECT produto_id FROM produto WHERE codigo = "' + str(data_asin) + '" LIMIT 1), (SELECT usuario_id FROM usuario WHERE codigo_perfil = " %s " LIMIT 1));', auxSql)
+
+                        cursor.fetchall()
 
                 mydb.commit()
 
             except pymysql.Error as e:
                 print(e)
                 mydb.rollback()
+
 
         # for i in product_asin:
         #    coletaReview(i)
@@ -700,34 +715,37 @@ def coletaElemento(palavra_chave, dominio):
     print("Salvando imagens de perfil:")
     for row in range(len(profiles)):
         print("row "+str(row)+"/"+str(len(profiles)-1))
-        if "" != profiles.loc[row]["author_img"]:
-    #         urllib.request.urlretrieve(profiles.loc[row]["author_img"],
-    #                                    "results/profile_img/amazon_" + profiles.loc[row]["profile_id"] + ".jpeg")
-            response = requests.get(profiles.loc[row]["author_img"])
-            nome_img = "results/profile_img/amazon_" + profiles.loc[row]["profile_id"] + ".jpeg"
-            # Verificar se a requisição foi bem-sucedida
-            if response.status_code == 200:
-                # Abrir um arquivo em modo de escrita binária
-                with open(nome_img, 'wb') as file:
-                    # Escrever o conteúdo da resposta no arquivo
-                    for chunk in response.iter_content(1024):
-                        file.write(chunk)
-            else:
-                print(f'Falha ao baixar a imagem. Status code: {response.status_code}')
-
-    cursor.close()
-    mydb.close()
+        if "" != profiles.loc[row]["author_img"] and not "grey-pixel" in profiles.loc[row]["author_img"]:
+            urllib.request.urlretrieve(profiles.loc[row]["author_img"],
+                                       "results/profile_img/amazon_" + profiles.loc[row]["profile_id"] + ".jpeg")
+            # response = requests.get(profiles.loc[row]["author_img"])
+            # nome_img = "results/profile_img/amazon_" + profiles.loc[row]["profile_id"] + ".jpeg"
+            # # Verificar se a requisição foi bem-sucedida
+            # if response.status_code == 200:
+            #     # Abrir um arquivo em modo de escrita binária
+            #     with open(nome_img, 'wb') as file:
+            #         # Escrever o conteúdo da resposta no arquivo
+            #         for chunk in response.iter_content(1024):
+            #             file.write(chunk)
+            # else:
+            #     print(f'Falha ao baixar a imagem. Status code: {response.status_code}')
+        else:
+            print(profiles.loc[row]["profile_link"])
+    #
+    # cursor.close()
+    # mydb.close()
 
     return product, product_descr, avaliacoes, profiles
 
-mydb = pymysql.connect(host="localhost", database='scraping2', user="root", passwd="", port = 3307,
-                       cursorclass=pymysql.cursors.DictCursor)
-cursor = mydb.cursor()
 
 palavra_chave = "buttermilk"
 
 #### .com.br, .com, .co.uk, .ca, .de (buttermilch), .fr (lait ribot), .com.mx, .it, .es (mazada, suero de mantequilla), .co.jp, .sg, .ae, .com.au, .in, .nl, .sa, .com.tu, .se, .pl, .com.be, .eg, .at,
 dominio = ".com"
+
+mydb = pymysql.connect(host="localhost", database='scraping2', user="root", passwd="", port = 3307,
+                       cursorclass=pymysql.cursors.DictCursor)
+cursor = mydb.cursor()
 
 # coletaElemento(palavra_chave, dominio)
 
