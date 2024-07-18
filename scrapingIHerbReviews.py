@@ -15,6 +15,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 
 import os
 import urllib.request
+from urllib.error import HTTPError
 import requests
 
 import re
@@ -278,8 +279,9 @@ def coletaReviewAux(link_review, dominio):
 
 def coletaReviewNew(link_review, dominio):
     # options.headless = True
-    driver2 = webdriver.Firefox(options=options)
+    # driver2 = webdriver.Firefox(options=options)
 
+    driver2 = webdriver.Edge()
     driver2.get(link_review+"?sort=2") ####ORDENANDO POR MAIS RECENTE, PRA PODER ENCERRAR ASSIM QUE APARECER O PRIMEIRO COMENTÁRIO JÁ SALVO NO BANCO
 
     # INICIANDO LISTA PARA ARMAZENAR
@@ -303,11 +305,13 @@ def coletaReviewNew(link_review, dominio):
         analisesSql = cursor.execute(
                 "SELECT * FROM avaliacao WHERE produto_id = (SELECT produto_id FROM produto WHERE codigo = '" + str(
                     codigo) + "' LIMIT 1);")
+
+        flag = True
         if auxAnalises > analisesSql:
 
             # PEGANDO CADA CARD DE AVALIAÇÃO
             # while (len(product_review) < 200):
-            while True:
+            while flag:
                 if len(product_review) >= auxAnalises: ### só por precaução
                     print("ok")
                     break
@@ -363,6 +367,7 @@ def coletaReviewNew(link_review, dominio):
                             # #### SE SIM, VAI PRO PRÓXIMO
                             # i += 1
                             # continue
+                            flag = False
                             break
 
                         # EXTRAIR NOME AUTOR/USUÁRIO
@@ -401,7 +406,7 @@ def coletaReviewNew(link_review, dominio):
                         except NoSuchElementException:
                             # SALVANDO A IMG PRA NÃO DEPENDER DE INTERNET PRO PROCESSAMENTO DA MESMA
                             profile_img = review_element.find_element(By.XPATH, ".//div/img[@class='MuiAvatar-img css-1hy9t21']").get_attribute("src")
-                            author_img = re.sub("/s.jpeg", "/l.jpeg", profile_img)
+                            author_img = profile_img.replace("/s.", "/l.")
                             # urllib.request.urlretrieve(author_img,
                             #                            "results/profile_img/iherb" + dominio + "_" + profile_id + ".jpeg")
 
@@ -476,7 +481,8 @@ def coletaReviewNew(link_review, dominio):
 
 
 def coletaDetalhes(url, dominio, review=False):
-    driver = webdriver.Firefox()
+    # driver = webdriver.Firefox()
+    driver = webdriver.Edge()
     driver.get(url)
 
     try:
@@ -493,7 +499,7 @@ def coletaDetalhes(url, dominio, review=False):
     nome = pag.find_element(By.ID, 'name').get_attribute("textContent").strip()
     marca = pag.find_element(By.XPATH, './/div/div/a[@class="last"][1]').text.strip()
     # tag = pag.find_element(By.XPATH, './/a[contains(@href, "categories")]/a').text.strip()
-    tag = pag.find_element(By.XPATH, './/div/div/a[4]').text.strip()
+    tag = pag.find_elements(By.XPATH, './/div[@id="breadCrumbs"]/a')[-1].text.strip()
 
     # DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
     # try:
@@ -544,8 +550,10 @@ def coletaDetalhes(url, dominio, review=False):
 
 
 def coletaPerfil(link_perfil, dominio, coletaProdutos=False):
-    driver = webdriver.Firefox(options=options)
+    # driver = webdriver.Firefox(options=options)
+    driver = webdriver.Edge()
     driver.get(link_perfil)
+
     try:
         driver.find_element(By.ID, "sp-cc-rejectall-link").click()
     except NoSuchElementException:
@@ -613,34 +621,9 @@ def coletaElemento(palavra_chave, dominio):
     avaliacoes = pd.DataFrame()
 
     # INICIALIZE O DRIVER DO SELENIUM
-    driver = webdriver.Firefox(options=fp)
+    # driver = webdriver.Firefox(options=fp)
+    driver = webdriver.Edge()
     driver.get("https://iherb.com/search/?kw=" + palavra_chave)
-
-    # LOGANDO PARA PODER ACESSAR PÁGINA DE QUEM AVALIOU O PRODUTO
-    # login = input("Login")
-    # senha = input("Senha")
-    # driver.get('https://www.amazon'+site+'/login')
-    # driver.find_element(By.ID, 'ap_email').send_keys(login)
-    # driver.find_element(By.ID, 'continue').click()
-    # driver.find_element(By.ID, 'ap_email').send_keys(senha)
-    # driver.find_element(By.NAME, 'rememberMe').click()
-    # driver.find_element(By.ID, 'signInSubmit').click()
-
-    # try:
-    #     driver.find_element(By.ID, "sp-cc-rejectall-link").click()
-    # except NoSuchElementException:
-    #     pass
-
-    #
-    # # create WebElement for a search box
-    # search_box = driver.find_element(By.ID, 'twotabsearchtextbox')  # type the keyword in searchbox
-    # search_box.send_keys(palavra_chave)
-    #
-    # # create WebElement for a search button
-    # search_button = driver.find_element(By.ID, 'nav-search-submit-button')  # click search_button
-    # search_button.click()
-
-    # pag = 1
 
     while True:
         time.sleep(3)
@@ -650,7 +633,7 @@ def coletaElemento(palavra_chave, dominio):
                 (By.XPATH, './/div[@class="product-cell-container col-xs-12 col-sm-12 col-md-8 col-lg-6"]')))
 
         while len(items):
-
+            auxDetalhes = pd.DataFrame()
             item = items.pop(0)
 
             name = item.find_element(By.CLASS_NAME, 'product-title').text.strip()
@@ -687,9 +670,8 @@ def coletaElemento(palavra_chave, dominio):
             # LINK DA IMAGEM -> DEPOIS BAIXAR O ARQUIVO
             img = item.find_element('xpath', ".//div[@class='product-image-wrapper']/span/img").get_attribute("src")
 
-            if not cursor.execute(
-                    "SELECT a.produto_id, p.codigo FROM iherb AS a LEFT JOIN produto AS p ON p.codigo = '" + str(
-                            codigo) + "';"):
+            if not cursor.execute("SELECT a.iherb_id FROM iherb AS a LEFT JOIN produto AS p ON p.produto_id = a.produto_id AND p.codigo = '" + str(codigo) + "';"
+            ):
                 try:
                     auxDetalhes = coletaDetalhes(link, dominio)
                     if not auxDetalhes.empty:
@@ -697,11 +679,7 @@ def coletaElemento(palavra_chave, dominio):
                 except:
                     pass
 
-            # ACESSANDO PÁGINA DE AVALIAÇÃO DO PRODUTO (SE HOUVER - SE FOR O CASO DE TER AVALIAÇÃO MAS SEM COMENTÁRIO, VAI SÓ ABRIR E FECHAR)
-            # cursor.execute("SELECT avaliacoes FROM produto WHERE codigo = '" + str(codigo) + "';")
-            # comparaSql = cursor.fetchall()
-            # if len(comparaSql) and ratings_num > 0:
-            #     if ratings_num > comparaSql[-1]["avaliacoes"]:
+            #### ACESSANDO PÁGINA DE AVALIAÇÃO DO PRODUTO (SE HOUVER - SE FOR O CASO DE TER AVALIAÇÃO MAS SEM COMENTÁRIO, VAI SÓ ABRIR E FECHAR)
             if ratings_num > cursor.execute("SELECT * FROM avaliacao WHERE produto_id = (SELECT produto_id FROM produto WHERE codigo = '" + str(codigo) + "' LIMIT 1);"):
                 link_review = item.find_element(By.XPATH, ".//a[@class='rating-count scroll-to']").get_attribute("href")
                 tempAvaliacoes = coletaReviewNew(link_review, dominio).fillna("")
@@ -728,48 +706,45 @@ def coletaElemento(palavra_chave, dominio):
                     ####VERIFICAR VAZIOS
                 img = "" if not len(img) else img
                     ####VERIFICAR VAZIOS
-                auxSql = [name, codigo, ratings, price, ratings_num, img, link,
-                         # "(SELECT site_id from site WHERE nome = 'iherb' AND palavra_chave = '" + str(palavra_chave) + "' LIMIT 1))"
-                          # 2
-                          ]
-                cursor.execute(
-                    "INSERT INTO produto (nome, codigo, nota, preco, avaliacoes, img, link, site_id) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT site_id FROM site WHERE nome = 'iherb' AND dominio = '" + str(
-                        dominio) + "' AND palavra_chave = '" + str(
-                        palavra_chave) + "' LIMIT 1)) ON DUPLICATE KEY UPDATE nota = '" + str(
-                        ratings) + "', avaliacoes = '" + str(ratings_num) + "';", auxSql)
-                cursor.fetchone()
+                auxSql = [name, codigo, ratings, price, ratings_num, img, link]
+                cursor.execute("SELECT site_id FROM site WHERE nome = 'iherb' AND palavra_chave = '" + str(palavra_chave) + "' LIMIT 1;")
+                auxSql.extend([cursor.fetchone()["site_id"]])
+                cursor.execute("INSERT INTO produto (nome, codigo, nota, preco, avaliacoes, img, link, site_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE nota = '" + str(ratings) + "', avaliacoes = '" + str(ratings_num) + "';", auxSql)
+                mydb.commit()
 
                 if 'auxDetalhes' in locals():
                     if not auxDetalhes.empty:
                         auxDetalhes.fillna("", inplace = True)
                         auxSql = auxDetalhes.loc[:,['tag', 'marca', 'descricao', 'uso', 'ingredientes', 'advertencia', 'aviso']].values.flatten().tolist()
-                        cursor.execute("INSERT INTO iherb (tag, marca, descricao, uso, ingredientes, advertencias, aviso, produto_id) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT produto_id from produto WHERE codigo = '" + str(codigo) +"' LIMIT 1));", auxSql )
-                        cursor.fetchone()
+                        cursor.execute("SELECT produto_id from produto WHERE codigo = '" + str(codigo) +"' LIMIT 1;")
+                        auxSql.extend([cursor.fetchone()["produto_id"]])
+                        cursor.execute("INSERT INTO iherb (tag, marca, descricao, uso, ingredientes, advertencias, aviso, produto_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);", auxSql)
+                        mydb.commit()
 
                 if 'tempAvaliacoes' in locals():
                     if not tempAvaliacoes.empty:
                         tempAvaliacoes.fillna("", inplace=True)
-
                         for perfil in range(len(tempAvaliacoes)):
-                            if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(
-                                    tempAvaliacoes.loc[perfil]["profile_id"]) + "';"):
-                                auxSql = tempAvaliacoes.loc[perfil][
-                                    ["author_name", "author_img", "profile_id", "profile_link"]]
-                                cursor.execute(
-                                    "INSERT INTO usuario (nome, img, codigo_perfil, link, site_id) VALUES (%s, %s, %s, %s, (SELECT site_id FROM site WHERE nome = 'iherb' AND dominio = '" + str(
-                                        dominio) + "' LIMIT 1)) ON DUPLICATE KEY UPDATE img = '" + str(
-                                        auxSql["author_img"]) + "';", auxSql.to_list())
-                                cursor.fetchone()
+                            if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(tempAvaliacoes.loc[perfil]["profile_id"]) + "';"):
+                                auxSql = tempAvaliacoes.loc[perfil][["author_name", "author_img", "profile_id", "profile_link"]].to_list()
+                                cursor.execute("SELECT site_id FROM site WHERE nome = 'iherb' AND palavra_chave = '" + str(palavra_chave) + "' LIMIT 1;")
+                                auxSql.extend([cursor.fetchone()["site_id"]])
+                                cursor.execute("INSERT INTO usuario (nome, img, codigo_perfil, link, site_id) VALUES (%s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE img = '" + str(auxSql[1]) + "';", auxSql)
+                                mydb.commit()
                                 profiles = pd.concat([profiles, auxSql.to_frame().T], ignore_index=True)
-
                         auxSql = tempAvaliacoes.loc[:, [
                                                            "review_title", "review_text", "review_star", "review_img", "author_name",
                                                            "review_date", "review_date",
                                                            "review_link", "codigo_avaliacao", "profile_id"]].values.tolist()
-                        cursor.executemany('INSERT INTO avaliacao (titulo, texto, nota, img, autor, pais, dataavaliacao, link_avaliacao, codigo_avaliacao, produto_id, usuario_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, (SELECT produto_id FROM produto WHERE codigo = "' + str(codigo) + '" LIMIT 1), (SELECT usuario_id FROM usuario WHERE codigo_perfil = " %s " LIMIT 1));', auxSql)
-                        cursor.fetchall()
-
-                mydb.commit()
+                        cursor.execute('SELECT produto_id FROM produto WHERE codigo = "' + str(codigo) + '" LIMIT 1;')
+                        aux_produto = cursor.fetchone()["produto_id"]
+                        for i in range(len(auxSql)):
+                            cursor.execute('SELECT usuario_id FROM usuario WHERE codigo_perfil = "'+str(auxSql[i][9])+'" LIMIT 1;')
+                            aux_profile = cursor.fetchone()["usuario_id"]
+                            auxSql2 = auxSql[i][0:9]
+                            auxSql2.extend([aux_produto, aux_profile])
+                            cursor.execute('INSERT INTO avaliacao (titulo, texto, nota, img, autor, pais, dataavaliacao, link_avaliacao, codigo_avaliacao, produto_id, usuario_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);', auxSql2)
+                        mydb.commit()
 
             except pymysql.Error as e:
                 print(e)
@@ -796,8 +771,6 @@ def coletaElemento(palavra_chave, dominio):
             break
         # paginacao.find_element(By.CLASS_NAME, "s-pagination-next").click()
 
-        # Salvando os dataframes em arquivos csv -> 'amazon' + pais + palavra_chave
-        # final.to_csv('results/amazon'+dominio+'_'+palavra_chave+'_(produtos)_'+today+'.csv', index=False)
     print("Exportando para excel")
     product.to_excel('results/iherb_' + palavra_chave + '_(produtos)_' + today + '.xlsx',
                      index=False)
@@ -814,7 +787,10 @@ def coletaElemento(palavra_chave, dominio):
         if "" != profiles.loc[row]["author_img"]:
             caminho = "results/profile_img/iherb_" + profiles.loc[row]["profile_id"] + ".jpeg"
             if not os.path.exists(caminho):
-                urllib.request.urlretrieve(profiles.loc[row]["author_img"], caminho)
+                try:
+                    urllib.request.urlretrieve(profiles.loc[row]["author_img"].replace("/s.", "/l."), caminho)
+                except HTTPError:
+                    pass
             # response = requests.get(profiles.loc[row]["author_img"])
             # nome_img = "results/profile_img/iherb_" + profiles.loc[row]["profile_id"] + ".jpeg"
             # # Verificar se a requisição foi bem-sucedida
