@@ -1,6 +1,7 @@
 import locale
 import time
 from datetime import date
+import random
 from datetime import datetime
 
 import pandas as pd
@@ -29,6 +30,9 @@ locale.setlocale(locale.LC_ALL, 'pt_BR')
 # Set ChromeOptions()
 global options
 options = webdriver.FirefoxOptions()
+options.set_preference("dom.webdriver.enabled", False)
+options.set_preference('useAutomationExtension', False)
+options.set_preference("general.useragent.override", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
 
 # Add the proxy as argument
 # options.add_argument("--proxy-server=%s" % PROXY)
@@ -313,7 +317,7 @@ def coletaReviewNew(link_review, dominio):
             # while (len(product_review) < 200):
             while flag:
                 if len(product_review) >= auxAnalises: ### só por precaução
-                    print("ok")
+                    # print("ok")
                     break
                 # TENTANDO CONTORNAR StaleElementReferenceException
                 try:
@@ -354,8 +358,9 @@ def coletaReviewNew(link_review, dominio):
                 while i < len(review_elements):
 
                     try:
-                        review_element = WebDriverWait(driver2, 10).until(
-                            EC.presence_of_all_elements_located((By.XPATH, './/div[@class="MuiBox-root css-1v71s4n"]')))[i]
+                        pag = WebDriverWait(driver2, 10).until(
+                            EC.presence_of_all_elements_located((By.XPATH, './/div[@class="MuiBox-root css-1v71s4n"]')))
+                        review_element = pag[i]
 
                         # EXTRAINDO LINK DA POSTAGEM
                         review_link = review_element.find_element(By.XPATH,
@@ -363,6 +368,8 @@ def coletaReviewNew(link_review, dominio):
                             "href")
                         review_id = review_link.split("/")[-2]
 
+                        #### VERIFICA SE O COMENTÁRIO JÁ EXISTE.
+                        #### COMO TÁ PEGANDO EM ORDEM, A FUNCÇÃO VAI SER INTERROMPIDA
                         if cursor.execute("SELECT * FROM avaliacao WHERE codigo_avaliacao = '" + str(review_id) + "';") > 0:
                             # #### SE SIM, VAI PRO PRÓXIMO
                             # i += 1
@@ -434,6 +441,10 @@ def coletaReviewNew(link_review, dominio):
                     except StaleElementReferenceException:
                         j += 1
                         print(str(len(product_review) - 1) + " " + str(j))
+                    except IndexError:
+                        pag
+                        print(i)
+
 
                 # try:
                 #     driver2.find_element(By.XPATH, ".//button[@aria-label='Go to next page' and disabled='']")
@@ -451,16 +462,6 @@ def coletaReviewNew(link_review, dominio):
                 #     break
         # else:
         #     print(auxAnalises, analisesSql)
-
-        # ENVIANDO PARA O BANCO DE DADOS
-    # try:
-    #     sql = 'insert into teste.tbl_avaliacoes (dominio, codigo, titulo, texto, nota, autor, date, pais, helpful_votes, link_avaliacao, link_perfil, id_perfil) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-    #     cursor.executemany(sql, product_review)
-    #     print(f"Avaliações do produto {codigo} inseridas")
-    #     mydb.commit()
-    # except pymysql.Error as e:
-    #     mydb.rollback()
-    #     print(e)
 
     # review = pd.DataFrame()
     # for link in review_links:
@@ -480,26 +481,35 @@ def coletaReviewNew(link_review, dominio):
                                  "link_reviews", "profile_link", "profile_id", "link_produto", "codigo_produto", "codigo_avaliacao"]).fillna("")
 
 
-def coletaDetalhes(url, dominio, review=False):
-    # driver = webdriver.Firefox()
-    driver = webdriver.Edge()
-    driver.get(url)
+def coletaDetalhes(link, dominio, review=False):
+    driver2 = webdriver.Firefox(options = options)
+    # driver = webdriver.Edge()
+    driver2.get(link)
 
     try:
-        pag = WebDriverWait(driver, 3).until(
+        pag = WebDriverWait(driver2, 3).until(
             EC.presence_of_element_located((By.XPATH, './/div[@class="product-grouping-wrapper defer-block"]')))
         # try:
         #     driver.find_element(By.ID, "sp-cc-all-link").click()
         # except NoSuchElementException:
         #     pass
     except:
-        driver.close()
+        driver2.close()
         return pd.DataFrame()
 
     nome = pag.find_element(By.ID, 'name').get_attribute("textContent").strip()
     marca = pag.find_element(By.XPATH, './/div/div/a[@class="last"][1]').text.strip()
-    # tag = pag.find_element(By.XPATH, './/a[contains(@href, "categories")]/a').text.strip()
     tag = pag.find_elements(By.XPATH, './/div[@id="breadCrumbs"]/a')[-1].text.strip()
+
+    try:
+        js_string = "var element = document.getElementById('px-captcha-wrapper');element.remove();"
+        driver2.execute_script(js_string)
+        js_string = "var element = document.getElementById('px-captcha-modal');element.remove();"
+        driver2.execute_script(js_string)
+        js_string = "var element = document.getElementByClass('modal-wrap');element.remove();"
+        driver2.execute_script(js_string)
+    except:
+        pass
 
     # DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
     # try:
@@ -516,19 +526,21 @@ def coletaDetalhes(url, dominio, review=False):
     aux = pag.find_elements(By.XPATH,
                             './/div[@class="row"]/div[contains(@class, "col-xs-24")]/div[@class="row item-row"]')
 
+    tabela = pag.find_element(By.XPATH, ".//div[@class='item-row']/div[@class='row']").get_attribute("textContent")
+    ### tentando separar essa tabela
     for bloco in aux:
-        if "Descrição\n" in bloco.text.strip():
-            descricao = bloco.text.strip()
-        elif "Uso Sugerido\n" in bloco.text.strip():
-            uso = bloco.text.strip()
-        elif "Outros Ingredientes\n" in bloco.text.strip():
-            ingredientes = bloco.text.strip()
-        elif "Advertências\n" in bloco.text.strip():
-            advertencia = bloco.text.strip()
-        elif "Aviso Legal\n" in bloco.text.strip():
-            aviso = bloco.text.strip()
+        if "Descr" in bloco.get_attribute("innerText"): ### descrição / description
+            descricao = bloco.get_attribute("innerText")
+        elif "Suge" in bloco.get_attribute("innerText"): ### uso sugerido / sugested
+            uso = bloco.get_attribute("innerText")
+        elif "Ingred" in bloco.get_attribute("innerText"): ### ingredientes / ingredients
+            ingredientes = bloco.get_attribute("innerText")
+        elif "Advert" in bloco.get_attribute("innerText") or "Warning" in bloco.get_attribute("innerText"): ### advertencia / warning
+            advertencia = bloco.get_attribute("innerText")
+        elif "Legal" in bloco.get_attribute("innerText"): ### Uso legal / Legal use
+            aviso = bloco.get_attribute("innerText")
 
-    driver.close()
+    driver2.close()
 
     # try:
     #     if not review:
@@ -544,9 +556,9 @@ def coletaDetalhes(url, dominio, review=False):
     #     print(e)
 
     return pd.DataFrame(
-        data=[[dominio, nome, marca, tag, moeda, price, descricao, uso, ingredientes, advertencia, aviso]],
-        columns=['dominio', 'nome', "tag", 'marca', 'moeda', 'price', 'descricao', 'uso', 'ingredientes', 'advertencia',
-                 'aviso']).fillna("")
+        data=[[dominio, nome, marca, tag, moeda, price, descricao, uso, ingredientes, advertencia, aviso, tabela]],
+        columns=['dominio', 'nome', 'marca', 'tag', 'moeda', 'price', 'descricao', 'uso', 'ingredientes', 'advertencia',
+                 'aviso', 'tabela']).fillna("")
 
 
 def coletaPerfil(link_perfil, dominio, coletaProdutos=False):
@@ -610,9 +622,9 @@ def coletaPerfil(link_perfil, dominio, coletaProdutos=False):
 
 def coletaElemento(palavra_chave, dominio):
     today = date.today().strftime("%Y%m%d")
-
-    fp = webdriver.FirefoxOptions()
-    fp.set_preference("network.cookie.cookieBehavior", 2)
+    cursor.execute("SELECT site_id FROM site WHERE nome = 'iherb' AND palavra_chave = '" + str(palavra_chave) + "';")
+    aux_site = cursor.fetchone()["site_id"]
+    # options.set_preference("network.cookie.cookieBehavior", 2)
 
     # INICIANDO DATAFRAMES
     product = pd.DataFrame()
@@ -621,19 +633,20 @@ def coletaElemento(palavra_chave, dominio):
     avaliacoes = pd.DataFrame()
 
     # INICIALIZE O DRIVER DO SELENIUM
-    # driver = webdriver.Firefox(options=fp)
-    driver = webdriver.Edge()
+    driver = webdriver.Firefox(options=options)
+    # driver = webdriver.Edge()
     driver.get("https://iherb.com/search/?kw=" + palavra_chave)
 
     while True:
-        time.sleep(3)
+        time.sleep(2)
         # CONFIGURAÇÃO PRA AGUARDAR A PAG CARREGAR ANTES DE TENTAR PEGAR OS RESULTS
         items = WebDriverWait(driver, 5).until(
             EC.presence_of_all_elements_located(
                 (By.XPATH, './/div[@class="product-cell-container col-xs-12 col-sm-12 col-md-8 col-lg-6"]')))
 
+        start = time.time()
         while len(items):
-            auxDetalhes = pd.DataFrame()
+
             item = items.pop(0)
 
             name = item.find_element(By.CLASS_NAME, 'product-title').text.strip()
@@ -670,30 +683,6 @@ def coletaElemento(palavra_chave, dominio):
             # LINK DA IMAGEM -> DEPOIS BAIXAR O ARQUIVO
             img = item.find_element('xpath', ".//div[@class='product-image-wrapper']/span/img").get_attribute("src")
 
-            if not cursor.execute("SELECT a.iherb_id FROM iherb AS a LEFT JOIN produto AS p ON p.produto_id = a.produto_id AND p.codigo = '" + str(codigo) + "';"
-            ):
-                try:
-                    auxDetalhes = coletaDetalhes(link, dominio)
-                    if not auxDetalhes.empty:
-                        product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
-                except:
-                    pass
-
-            #### ACESSANDO PÁGINA DE AVALIAÇÃO DO PRODUTO (SE HOUVER - SE FOR O CASO DE TER AVALIAÇÃO MAS SEM COMENTÁRIO, VAI SÓ ABRIR E FECHAR)
-            if ratings_num > cursor.execute("SELECT * FROM avaliacao WHERE produto_id = (SELECT produto_id FROM produto WHERE codigo = '" + str(codigo) + "' LIMIT 1);"):
-                link_review = item.find_element(By.XPATH, ".//a[@class='rating-count scroll-to']").get_attribute("href")
-                tempAvaliacoes = coletaReviewNew(link_review, dominio).fillna("")
-                if not tempAvaliacoes.empty:
-                    avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
-                    # for link_perfil in tempAvaliacoes.link_perfil:
-                    #     tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, dominio, False)
-                    #     if not tempPerfil.empty:
-                    #         profiles = pd.concat([profiles, tempPerfil], ignore_index=True)
-                    #     if not tempReview.empty:
-                    #         avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
-                    #     if not tempCompras.empty:
-                    #         product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
-
                 # SALVANDO NO DATAFRAME
             product = pd.concat(
                 [product,
@@ -708,58 +697,130 @@ def coletaElemento(palavra_chave, dominio):
                     ####VERIFICAR VAZIOS
                 auxSql = [name, codigo, ratings, price, ratings_num, img, link]
                 cursor.execute("SELECT site_id FROM site WHERE nome = 'iherb' AND palavra_chave = '" + str(palavra_chave) + "' LIMIT 1;")
-                auxSql.extend([cursor.fetchone()["site_id"]])
+                auxSql.extend([aux_site])
                 cursor.execute("INSERT INTO produto (nome, codigo, nota, preco, avaliacoes, img, link, site_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE nota = '" + str(ratings) + "', avaliacoes = '" + str(ratings_num) + "';", auxSql)
                 mydb.commit()
-
-                if 'auxDetalhes' in locals():
-                    if not auxDetalhes.empty:
-                        auxDetalhes.fillna("", inplace = True)
-                        auxSql = auxDetalhes.loc[:,['tag', 'marca', 'descricao', 'uso', 'ingredientes', 'advertencia', 'aviso']].values.flatten().tolist()
-                        cursor.execute("SELECT produto_id from produto WHERE codigo = '" + str(codigo) +"' LIMIT 1;")
-                        auxSql.extend([cursor.fetchone()["produto_id"]])
-                        cursor.execute("INSERT INTO iherb (tag, marca, descricao, uso, ingredientes, advertencias, aviso, produto_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);", auxSql)
-                        mydb.commit()
-
-                if 'tempAvaliacoes' in locals():
-                    if not tempAvaliacoes.empty:
-                        tempAvaliacoes.fillna("", inplace=True)
-                        for perfil in range(len(tempAvaliacoes)):
-                            if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(tempAvaliacoes.loc[perfil]["profile_id"]) + "';"):
-                                auxSql = tempAvaliacoes.loc[perfil][["author_name", "author_img", "profile_id", "profile_link"]].to_list()
-                                cursor.execute("SELECT site_id FROM site WHERE nome = 'iherb' AND palavra_chave = '" + str(palavra_chave) + "' LIMIT 1;")
-                                auxSql.extend([cursor.fetchone()["site_id"]])
-                                cursor.execute("INSERT INTO usuario (nome, img, codigo_perfil, link, site_id) VALUES (%s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE img = '" + str(auxSql[1]) + "';", auxSql)
-                                mydb.commit()
-                                profiles = pd.concat([profiles, auxSql.to_frame().T], ignore_index=True)
-                        auxSql = tempAvaliacoes.loc[:, [
-                                                           "review_title", "review_text", "review_star", "review_img", "author_name",
-                                                           "review_date", "review_date",
-                                                           "review_link", "codigo_avaliacao", "profile_id"]].values.tolist()
-                        cursor.execute('SELECT produto_id FROM produto WHERE codigo = "' + str(codigo) + '" LIMIT 1;')
-                        aux_produto = cursor.fetchone()["produto_id"]
-                        for i in range(len(auxSql)):
-                            cursor.execute('SELECT usuario_id FROM usuario WHERE codigo_perfil = "'+str(auxSql[i][9])+'" LIMIT 1;')
-                            aux_profile = cursor.fetchone()["usuario_id"]
-                            auxSql2 = auxSql[i][0:9]
-                            auxSql2.extend([aux_produto, aux_profile])
-                            cursor.execute('INSERT INTO avaliacao (titulo, texto, nota, img, autor, pais, dataavaliacao, link_avaliacao, codigo_avaliacao, produto_id, usuario_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);', auxSql2)
-                        mydb.commit()
-
             except pymysql.Error as e:
                 print(e)
                 mydb.rollback()
 
-            # INSERÇÃO NO BANCO DE DADOS
-            # try:
-            #     # VERIFICAR SE JÁ EXISTE??
-            #     sql = 'insert into teste.tbl_produtos (dominio, codigo, nome, preco, nota, num_avaliacoes, img, link) values (%s, %s, %s, %s, %s, %s, %s, %s)'
-            #     cursor.execute(sql, (dominio, codigo, name, price, ratings, ratings_num, img, link))
-            #     print(f"Produto {codigo} inserido")
-            #     mydb.commit()
-            # except pymysql.Error as e:
-            #     print(e)
-            #     mydb.rollback()
+            end = time.time()
+
+            auxDetalhes = pd.DataFrame()
+            if not cursor.execute("SELECT iherb_id FROM iherb WHERE produto_id IN (SELECT produto_id FROM produto WHERE codigo = '" + str(codigo) + "');"):
+                try:
+                    aux_tempo = random.randint(1,30) + 0 if (end-start) >= 120 else 120-(end-start)
+                    print("Aguardando " + str(int(aux_tempo)) + "s para coletaDetalhes("+str(codigo)+")")
+                    time.sleep(aux_tempo)
+                    auxDetalhes = coletaDetalhes(link, dominio)
+                    if not auxDetalhes.empty:
+                        product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
+                        print(link + " Descr ok")
+                        auxDetalhes.fillna("", inplace=True)
+                        try:
+                            auxSql = auxDetalhes.loc[:,
+                                     ['tag', 'marca', 'descricao', 'uso', 'ingredientes', 'advertencia',
+                                      'aviso', 'tabela']].values.flatten().tolist()
+                            cursor.execute(
+                                "SELECT produto_id from produto WHERE codigo = '" + str(codigo) + "' LIMIT 1;")
+                            aux_produto = cursor.fetchone()["produto_id"]
+                            auxSql.extend([aux_produto])
+                            cursor.execute(
+                                "INSERT INTO iherb (tag, marca, descricao, uso, ingredientes, advertencias, aviso, tabela, produto_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);",
+                                auxSql)
+                            mydb.commit()
+                        except pymysql.Error as e:
+                            print(e)
+                            mydb.rollback()
+                except:
+                    pass
+
+                if cursor.execute("SELECT produto_id FROM iherb WHERE produto_id = '"+str(aux_produto)+"' AND tabela NOT REGEXP 'leitelho|buttermilk';"):
+                    try:
+                        cursor.execute("UPDATE produto SET observacao = CONCAT_WS('\n', observacao, '- NÃO CONTÉM PALAVRA LEITELHO OU BUTTERMILK NA DESCRIÇÃO'), leitelho = FALSE WHERE produto_id = '" + str(aux_produto) + "';")
+                        mydb.commit()
+                        print("Produto não contém leitelho nem buttermilk na descrição")
+                        continue
+                    except pymysql.Error as e:
+                        print(e)
+                        mydb.rollback()
+            start = time.time()
+
+            cursor.execute("SELECT leitelho FROM produto WHERE codigo = '" + str(codigo) + "';")
+            if not cursor.fetchone()["leitelho"]:
+                continue
+
+            #### ACESSANDO PÁGINA DE AVALIAÇÃO DO PRODUTO (SE HOUVER - SE FOR O CASO DE TER AVALIAÇÃO MAS SEM COMENTÁRIO, VAI SÓ ABRIR E FECHAR)
+            if (ratings_num > cursor.execute("SELECT * FROM avaliacao WHERE produto_id = (SELECT produto_id FROM produto WHERE codigo = '" + str(codigo) + "' LIMIT 1);")):
+                link_review = item.find_element(By.XPATH, ".//a[@class='rating-count scroll-to']").get_attribute("href")
+                tempAvaliacoes = coletaReviewNew(link_review, dominio).fillna("")
+                # for link_perfil in tempAvaliacoes.link_perfil:
+                #     tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, dominio, False)
+                #     if not tempPerfil.empty:
+                #         profiles = pd.concat([profiles, tempPerfil], ignore_index=True)
+                #     if not tempReview.empty:
+                #         avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
+                #     if not tempCompras.empty:
+                #         product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
+                if not tempAvaliacoes.empty:
+                    avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
+                    tempAvaliacoes.fillna("", inplace=True)
+                    for perfil in range(len(tempAvaliacoes)):
+                        try:
+                            if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(
+                                    tempAvaliacoes.loc[perfil]["profile_id"]) + "';"):
+                                auxSql = tempAvaliacoes.loc[perfil][
+                                    ["author_name", "author_img", "profile_id", "profile_link"]].to_list()
+                                cursor.execute(
+                                    "SELECT site_id FROM site WHERE nome = 'iherb' AND palavra_chave = '" + str(
+                                        palavra_chave) + "' LIMIT 1;")
+                                auxSql.extend([aux_site])
+                                cursor.execute(
+                                    "INSERT INTO usuario (nome, img, codigo_perfil, link, site_id) VALUES (%s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE img = '" + str(
+                                        auxSql[1]) + "';", auxSql)
+                                mydb.commit()
+                                profiles = pd.concat([profiles, pd.DataFrame([auxSql],
+                                                                             columns=["author_name", "author_img",
+                                                                                      "profile_id", "profile_link",
+                                                                                      "site_id"])],
+                                                     ignore_index=True)
+
+                                print("row " + str(perfil) + "/" + str(len(tempAvaliacoes) - 1))
+                                if "" != tempAvaliacoes.loc[perfil]["author_img"]:
+                                    caminho = "results/profile_img/iherb_" + tempAvaliacoes.loc[perfil]["profile_id"] + ".jpeg"
+                                    if not os.path.exists(caminho):
+                                        try:
+                                            urllib.request.urlretrieve(tempAvaliacoes.loc[perfil]["author_img"].replace("/s.", "/l."), caminho)
+                                        except HTTPError:
+                                            pass
+                        except pymysql.Error as e:
+                            print(e)
+                            mydb.rollback()
+
+                    try:
+                        auxSql = tempAvaliacoes.loc[:, [
+                                                           "review_title", "review_text", "review_star",
+                                                           "review_img", "author_name",
+                                                           "review_date", "review_date",
+                                                           "review_link", "codigo_avaliacao",
+                                                           "profile_id"]].values.tolist()
+                        cursor.execute(
+                            'SELECT produto_id FROM produto WHERE codigo = "' + str(codigo) + '" LIMIT 1;')
+                        # aux_produto = cursor.fetchone()["produto_id"]
+                        for i in range(len(auxSql)):
+                            cursor.execute('SELECT usuario_id FROM usuario WHERE codigo_perfil = "' + str(
+                                auxSql[i][9]) + '" LIMIT 1;')
+                            aux_profile = cursor.fetchone()["usuario_id"]
+                            auxSql2 = auxSql[i][0:9]
+                            auxSql2.extend([aux_produto, aux_profile])
+                            cursor.execute(
+                                'INSERT INTO avaliacao (titulo, texto, nota, img, autor, pais, dataavaliacao, link_avaliacao, codigo_avaliacao, produto_id, usuario_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);',
+                                auxSql2)
+                        mydb.commit()
+                    except pymysql.Error as e:
+                        print(e)
+                        mydb.rollback()
+
 
         # for i in product_codigo:
         #    coletaReview(i)
@@ -781,16 +842,16 @@ def coletaElemento(palavra_chave, dominio):
     profiles.to_excel('results/iherb_' + palavra_chave + '_(perfis)_' + today + '.xlsx',
                       index=False)
 
-    print("Salvando imagens de perfil:")
-    for row in range(len(profiles)):
-        print("row " + str(row) + "/" + str(len(profiles) - 1))
-        if "" != profiles.loc[row]["author_img"]:
-            caminho = "results/profile_img/iherb_" + profiles.loc[row]["profile_id"] + ".jpeg"
-            if not os.path.exists(caminho):
-                try:
-                    urllib.request.urlretrieve(profiles.loc[row]["author_img"].replace("/s.", "/l."), caminho)
-                except HTTPError:
-                    pass
+    # print("Salvando imagens de perfil:")
+    # for row in range(len(profiles)):
+    #     print("row " + str(row) + "/" + str(len(profiles) - 1))
+    #     if "" != profiles.loc[row]["author_img"]:
+    #         caminho = "results/profile_img/iherb_" + profiles.loc[row]["profile_id"] + ".jpeg"
+    #         if not os.path.exists(caminho):
+    #             try:
+    #                 urllib.request.urlretrieve(profiles.loc[row]["author_img"].replace("/s.", "/l."), caminho)
+    #             except HTTPError:
+    #                 pass
             # response = requests.get(profiles.loc[row]["author_img"])
             # nome_img = "results/profile_img/iherb_" + profiles.loc[row]["profile_id"] + ".jpeg"
             # # Verificar se a requisição foi bem-sucedida
@@ -817,6 +878,76 @@ def coletaElemento(palavra_chave, dominio):
 
     return product, product_descr, avaliacoes, profiles
 
+
+def coletaProdutoNew():
+    # INICIANDO DATAFRAMES
+    product = pd.DataFrame()
+    product_descr = pd.DataFrame()
+
+    # INICIALIZE O DRIVER DO SELENIUM
+    driver = webdriver.Firefox(options=options)
+    # driver = webdriver.Edge()
+    driver.get("https://iherb.com/search/?kw=" + palavra_chave)
+    cursor.execute("SELECT site_id FROM site WHERE nome = 'iherb' AND palavra_chave = '" + str(palavra_chave) + "';")
+    aux_site = cursor.fetchone()["site_id"]
+
+    while True:
+        time.sleep(2)
+        # CONFIGURAÇÃO PRA AGUARDAR A PAG CARREGAR ANTES DE TENTAR PEGAR OS RESULTS
+        items = WebDriverWait(driver, 5).until(
+            EC.presence_of_all_elements_located(
+                (By.XPATH, './/div[@class="product-cell-container col-xs-12 col-sm-12 col-md-8 col-lg-6"]')))
+
+        while len(items):
+            item = items.pop(0)
+            name = item.find_element(By.CLASS_NAME, 'product-title').text.strip()
+            codigo = item.find_element(By.XPATH, ".//a[@class='absolute-link product-link']").get_attribute(
+                "data-product-id")
+            link = item.find_element('xpath', './/div/a[@class="absolute-link product-link"]').get_attribute("href")
+            img = item.find_element('xpath', ".//div[@class='product-image-wrapper']/span/img").get_attribute("src")
+            product = pd.concat([product, pd.DataFrame([[name, codigo, link, img]],
+                                                       columns=["name", "codigo", "link", "img"])],
+                                ignore_index=True)
+        for i in range(len(product)):
+            auxDetalhes = pd.DataFrame()
+            if not cursor.execute(
+                    "SELECT a.iherb_id FROM iherb AS a LEFT JOIN produto AS p ON p.produto_id = a.produto_id AND p.codigo = '" + str(
+                            product["codigo"][i]) + "';"
+                    ):
+                try:
+                    time.sleep(120)
+                    print(link)
+                    auxDetalhes = coletaDetalhes(link, dominio)
+                    if not auxDetalhes.empty:
+                        product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
+                        cursor.execute("SELECT produto_id FROM produto WHERE codigo = '" + str(product["codigo"][i]) + "';")
+
+                        auxDetalhes.values.tolist()
+                except:
+                    pass
+
+            # #### IR PRA PRÓXIMA PÁGINA (SE HOUVER)
+            # try:
+            #     driver.find_element('xpath', ".//a[contains(@class, 'pagination-next')]").click()
+            # except NoSuchElementException:
+            #     break
+
+        # for i in range(len(product)):
+        #     auxDetalhes = pd.DataFrame()
+        #     if not cursor.execute("SELECT a.iherb_id FROM iherb AS a LEFT JOIN produto AS p ON p.produto_id = a.produto_id AND p.codigo = '" + str(codigo) + "';"
+        #     ):
+        #         try:
+        #             time.sleep(120)
+        #             print(product["link"][i])
+        #             auxDetalhes = coletaDetalhes(product["link"][i], dominio)
+        #             if not auxDetalhes.empty:
+        #                 product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
+        #                 cursor.execute("SELECT produto_id FROM produto WHERE codigo = '%s';", product["codigo"][i])
+        #
+        #
+        #                 print("ok")
+        #         except:
+        #             pass
 
 palavra_chave = "buttermilk"
 
