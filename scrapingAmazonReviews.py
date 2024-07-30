@@ -1,6 +1,7 @@
 import locale
 import time
 from datetime import date
+import os
 from datetime import datetime
 
 import pandas as pd
@@ -14,29 +15,30 @@ from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.action_chains import ActionChains
 
 import urllib.request
+from urllib.error import HTTPError
 import requests
 
 import re
 
 locale.setlocale(locale.LC_ALL, 'pt_BR')
 
-# Define the proxy server
-# global PROXY
-# PROXY = "50.207.199.80:80"
 
-# Set ChromeOptions()
+### Set ChromeOptions()
 global options
 options = webdriver.FirefoxOptions()
 
-# Add the proxy as argument
-# options.add_argument("--proxy-server=%s" % PROXY)
+
+### Add the proxy as argument
+### Define the proxy server
+global PROXY
+PROXY = "132.148.167.243:41644"
+options.add_argument("--proxy-server=%s" % PROXY)
 
 # INICIANDO CONEXÃO COM O BANCO DE DADOS
 global mydb, cursor
 mydb = pymysql.connect(host="localhost", database='scraping2', user="root", passwd="", port = 3307,
                        cursorclass=pymysql.cursors.DictCursor)
 cursor = mydb.cursor()
-mydb.rollback()
 
 global opener
 opener = urllib.request.build_opener()
@@ -232,124 +234,162 @@ urllib.request.install_opener(opener)
 #     return review  # , profiles
 
 
-def coletaReviewNew(data_asin, dominio):
+# def coletaReviewNew(data_asin, dominio):
+def coletaReviewNew(link_reviews, dominio):
     # options.headless = True
+
     numPag = 1
 
-    #### PÁGINA DAS AVALIAÇÕES DO PRODUTO
-    link_reviews = 'https://www.amazon' + dominio + '/product-reviews/' + data_asin + '?pageNumber='
-
     driver2 = webdriver.Firefox(options=options)
-    driver2.get(link_reviews + str(numPag))
+    #### PÁGINA DAS AVALIAÇÕES DO PRODUTO
+    # link_reviews = 'https://www.amazon' + dominio + '/product-reviews/' + data_asin + '?pageNumber='
+    # driver2.get(link_reviews + str(numPag))
+    # link_reviews = 'https://www.amazon' + dominio + '/product-reviews/' + data_asin +
+    data_asin = link_reviews.split("/product-reviews/")[1]
+    ### link_reviews
+    # driver2.get(link_reviews+ '/ref=cm_cr_dp_d_show_all_btm?ie=UTF8&reviewerType=all_reviews')
+    driver2.get(link_reviews.replace("/product-reviews/", "/dp/"))
 
+    product_review = []
     try:
-        driver2.find_element(By.ID, "sp-cc-acceptall-link").click()
-    except NoSuchElementException:
+        WebDriverWait(driver2, 3).until(
+            EC.presence_of_element_located((By.XPATH, ".//a[@data-hook='see-all-reviews-link-foot']"))).click()
+
+        try:
+            driver2.find_element(By.ID, "sp-cc-acceptall-link").click()
+        except NoSuchElementException:
+            pass
+
+        # INICIANDO LISTA PARA ARMAZENAR
+        link_produto = driver2.find_element(By.XPATH, ".//a[@data-hook='product-link']").get_attribute("href")
+        codigo = data_asin
+
+        # time.sleep(3)
+
+        auxAnalises = int(
+            driver2.find_element(By.XPATH, ".//div[@data-hook='cr-filter-info-review-rating-count']").text.split(", ")[
+                1].split(" ")[0].replace(",", "").replace(".", ""))
+        analisesSql = cursor.execute(
+            "SELECT * FROM avaliacao WHERE produto_id = (SELECT produto_id FROM produto WHERE codigo = '" + str(
+                codigo) + "' LIMIT 1);")
+
+        flag = True
+        if auxAnalises > analisesSql:
+        #### PEGANDO CADA CARD DE AVALIAÇÃO
+            while flag:
+                # time.sleep(1)
+                #### TENTANDO CONTORNAR StaleElementReferenceException
+
+                if len(product_review) >= auxAnalises:  ### só por precaução
+                    break
+
+                try:
+                    WebDriverWait(driver2, 3).until(
+                        EC.presence_of_element_located((By.XPATH, ".//div[@class='a-section a-spacing-none reviews-content a-size-base']")))
+                except:
+                    break
+
+                # # PEGANDO CADA CARD DE AVALIAÇÃO
+
+                i, j = 0, 0
+
+                try:
+                    # pag = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/div[@class="MuiBox-root css-i9gxme"]')))
+                    review_elements = WebDriverWait(driver2, 3).until(
+                        EC.presence_of_all_elements_located((By.XPATH, './/div[@class="a-section review aok-relative"]')))
+                except:
+                    break
+
+                while i < len(review_elements) and i < 10:
+                    try:
+                        try:
+                            review_element = WebDriverWait(driver2, 3).until(
+                                EC.presence_of_all_elements_located((By.XPATH, './/div[@class="a-section review aok-relative"]')))[i]
+                        except IndexError:
+                            flag = False
+                            break
+
+                        review_id = review_element.get_attribute("id")
+
+                        #### VERIFICA SE O COMENTÁRIO JÁ EXISTE NO BANCO
+                        if cursor.execute("SELECT * FROM avaliacao where codigo_avaliacao = '" + str(review_id) + "';") > 0:
+                            #### SE SIM, VAI PRO PRÓXIMO
+                            i += 1
+                            continue
+
+                        # EXTRAINDO LINK DA POSTAGEM
+                        review_link = review_element.find_element(By.XPATH, './/*[@data-hook="review-title"]').get_attribute("href")
+
+                        # EXTRAIR NOME AUTOR/USUÁRIO
+                        author_name = review_element.find_element(By.XPATH, './/span[@class="a-profile-name"]').text.strip()
+
+                        # EXTRAIR TÍTULO AVALIAÇÃO
+                        review_title = review_element.find_element(By.XPATH, './/*[@data-hook="review-title"]').text.strip()
+
+                        # EXTRAINDO TEXTO AVALIAÇÃO
+                        review_text = review_element.find_element(By.XPATH, './/span[@data-hook="review-body"]').text.strip()
+
+                        # EXTRAINDO NOTA E JÁ CONVERTENDO O DECIMAL
+                        review_star = float(review_element.find_element(By.XPATH, ".//span[@class='a-icon-alt']").get_attribute("textContent").split()[0].replace(',', '.'))
+
+                        # EXTRAINDO DATA AVALIAÇÃO
+                        # review_date = ' '.join(review_element.find_element(By.CLASS_NAME, 'review-date').text.split()[-5:])
+                        # review_date = datetime.strptime(review_date, "%d de %B de %Y").strftime("%Y/%m/%d")
+                        review_date = review_element.find_element(By.XPATH, './/span[@data-hook="review-date"]').text.strip()
+
+                        # EXTRAINDO PAÍS AVALIAÇÃO
+                        # review_country = review_element.find_element(By.CLASS_NAME, 'review-date').text.strip  ##arrumar
+
+                        # EXTRAINDO LINK E IMAGEM DO PERFIL PARA COLETA SEGUINTE
+                        try:
+                            profile_link = review_element.find_element(By.XPATH, './/a[@class="a-profile"]').get_attribute("href")
+                            profile_id = profile_link.split('/')[5]
+                            ## VERIFICANDO SE É IMG PADRÃO / SEM IMG
+                            if "default" in review_element.find_element(By.XPATH, ".//div[@class='a-profile-avatar']/img").get_attribute("src"):
+                                profile_img = author_img = ""
+                            else:
+
+                                profile_img = review_element.find_element(By.XPATH, ".//div[@class='a-profile-avatar']/img[@class='']").get_attribute("src")
+                                author_img = profile_img.replace("SX48_", "")
+                                # urllib.request.urlretrieve(author_img,
+                                #                            "results/profile_img/amazon" + dominio + "_" + profile_id + ".jpeg")
+
+                            # profiles = pd.concat([profiles, coletaPerfil(profile_link, review_country)], ignore_index=True)
+                        except NoSuchElementException:
+                            profile_link, profile_id, author_img = "", "", ""
+
+                        try:
+                            review_img = review_element.find_element(By.XPATH,'.//img[@class="review-image-tile"]').get_attribute("src")
+                            review_img = review_img.replace("._SY88", "")
+                        except NoSuchElementException:
+                            review_img = ""
+
+                        product_review.append(
+                            (dominio, review_link, review_title, review_text, review_star, review_img, author_name, author_img, review_date,
+                             link_reviews, profile_link, profile_id, link_produto, codigo, review_id))
+
+                    except StaleElementReferenceException:
+                        j += 1
+                        print(str(len(product_review) - 1) + " " + str(j))
+
+                    i+=1
+
+                numPag += 1
+                # driver2.get(link_reviews + str(numPag))
+                try:
+                    auxPosicao = driver2.find_element(By.XPATH, ".//div[@id='cm_cr-pagination_bar']/ul/li[@class='a-last']")
+                    driver2.execute_script("arguments[0].scrollIntoView();", auxPosicao)
+                    time.sleep(1)
+                    auxPosicao.click()
+                except:
+                    break
+
+        print(link_reviews, str(len(product_review)) + "+" + str(analisesSql) + " / " + str(auxAnalises))
+
+    except TimeoutException:
         pass
 
-    # INICIANDO LISTA PARA ARMAZENAR
-    product_review = []
-    link_produto = driver2.find_element(By.XPATH, ".//a[@data-hook='product-link']").get_attribute("href")
-    codigo = data_asin
-
-    # time.sleep(3)
-
-    #### PEGANDO CADA CARD DE AVALIAÇÃO
-    while True:
-        #### TENTANDO CONTORNAR StaleElementReferenceException
-        try:
-            WebDriverWait(driver2, 3).until(
-                EC.presence_of_element_located((By.XPATH, ".//div[@class='a-section a-spacing-none reviews-content a-size-base']")))
-        except:
-            break
-
-        # # PEGANDO CADA CARD DE AVALIAÇÃO
-
-        i, j = 0, 0
-
-        try:
-            # pag = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, './/div[@class="MuiBox-root css-i9gxme"]')))
-            review_elements = WebDriverWait(driver2, 3).until(
-                EC.presence_of_all_elements_located((By.XPATH, './/div[@class="a-section review aok-relative"]')))
-        except:
-            break
-
-        while i < len(review_elements):
-            try:
-                review_element = WebDriverWait(driver2, 3).until(
-                    EC.presence_of_all_elements_located((By.XPATH, './/div[@class="a-section review aok-relative"]')))[i]
-
-                review_id = review_element.get_attribute("id")
-
-                #### VERIFICA SE O COMENTÁRIO JÁ EXISTE NO BANCO
-                if cursor.execute("SELECT * FROM avaliacao where codigo_avaliacao = '" + str(review_id) + "';") > 0:
-                    #### SE SIM, VAI PRO PRÓXIMO
-                    i += 1
-                    continue
-
-                # EXTRAINDO LINK DA POSTAGEM
-                review_link = review_element.find_element(By.XPATH, './/*[@data-hook="review-title"]').get_attribute("href")
-
-                # EXTRAIR NOME AUTOR/USUÁRIO
-                author_name = review_element.find_element(By.XPATH, './/span[@class="a-profile-name"]').text.strip()
-
-                # EXTRAIR TÍTULO AVALIAÇÃO
-                review_title = review_element.find_element(By.XPATH, './/*[@data-hook="review-title"]').text.strip()
-
-                # EXTRAINDO TEXTO AVALIAÇÃO
-                review_text = review_element.find_element(By.XPATH, './/span[@data-hook="review-body"]').text.strip()
-
-                # EXTRAINDO NOTA E JÁ CONVERTENDO O DECIMAL
-                review_star = float(review_element.find_element(By.XPATH, ".//span[@class='a-icon-alt']").get_attribute("textContent").split()[0].replace(',', '.'))
-
-                # EXTRAINDO DATA AVALIAÇÃO
-                # review_date = ' '.join(review_element.find_element(By.CLASS_NAME, 'review-date').text.split()[-5:])
-                # review_date = datetime.strptime(review_date, "%d de %B de %Y").strftime("%Y/%m/%d")
-                review_date = review_element.find_element(By.XPATH, './/span[@data-hook="review-date"]').text.strip()
-
-                # EXTRAINDO PAÍS AVALIAÇÃO
-                # review_country = review_element.find_element(By.CLASS_NAME, 'review-date').text.strip  ##arrumar
-
-                # EXTRAINDO LINK E IMAGEM DO PERFIL PARA COLETA SEGUINTE
-                try:
-                    profile_link = review_element.find_element(By.XPATH, './/a[@class="a-profile"]').get_attribute("href")
-                    profile_id = profile_link.split('/')[5]
-                    ## VERIFICANDO SE É IMG PADRÃO / SEM IMG
-                    if "default" in review_element.find_element(By.XPATH, ".//div[@class='a-profile-avatar']/img").get_attribute("src"):
-                        profile_img = author_img = ""
-                    else:
-
-                        profile_img = review_element.find_element(By.XPATH, ".//div[@class='a-profile-avatar']/img[@class='']").get_attribute("src")
-                        author_img = re.sub("SX48_", "", profile_img)
-                        # urllib.request.urlretrieve(author_img,
-                        #                            "results/profile_img/amazon" + dominio + "_" + profile_id + ".jpeg")
-
-                    # profiles = pd.concat([profiles, coletaPerfil(profile_link, review_country)], ignore_index=True)
-                except NoSuchElementException:
-                    profile_link, profile_id, author_img = None, None, None
-
-                try:
-                    review_img = review_element.find_element(By.XPATH,'.//img[@class="review-image-tile"]').get_attribute("src")
-                    review_img = re.sub("._SY88", "", review_img)
-                except NoSuchElementException:
-                    review_img = ""
-
-                product_review.append(
-                    (dominio, review_link, review_title, review_text, review_star, review_img, author_name, author_img, review_date,
-                     link_reviews, profile_link, profile_id, link_produto, codigo, review_id))
-
-            except StaleElementReferenceException:
-                j += 1
-                print(str(len(product_review) - 1) + " " + str(j))
-
-            i+=1
-
-        numPag += 1
-        driver2.get(link_reviews + str(numPag))
-
     driver2.close()
-
-    print(link_reviews, len(product_review))
 
     return pd.DataFrame(data=product_review,
                         columns=["dominio", "review_link", "review_title", "review_text", "review_star", "review_img",
@@ -395,12 +435,12 @@ def coletaDetalhes(url, dominio, review=False):
                                  ".//span[@class='a-price a-text-price a-size-medium apexPriceToPay']").text.strip()
         moeda = price
     except NoSuchElementException:
-        moeda, price = 0.0, None
+        moeda, price = 0.0, 0.0
 
     try:
         overview = pag.find_element(By.ID, 'productOverview_feature_div').text.strip()
     except NoSuchElementException:
-        overview = None
+        overview = ""
 
     try:
         features = pag.find_element(By.ID, 'featurebullets_feature_div').text.strip()
@@ -408,7 +448,7 @@ def coletaDetalhes(url, dominio, review=False):
         try:
             features = pag.find_element(By.ID, 'productFactsDesktop_feature_div').text.strip()
         except NoSuchElementException:
-            features = None
+            features = ""
 
     try:
         details = pag.find_element(By.ID, 'productDetails_feature_div').text.strip()
@@ -416,24 +456,24 @@ def coletaDetalhes(url, dominio, review=False):
         try:
             details = pag.find_element(By.ID, 'detailBulletsWrapper_feature_div').text.strip()
         except NoSuchElementException:
-            details = None
+            details = ""
     try:
         description = pag.find_element(By.ID, 'productDescription_feature_div').text.strip()
     except NoSuchElementException:
         try:
             description = pag.find_element(By.ID, 'bookDescription_feature_div').text.strip()
         except NoSuchElementException:
-            description = None
+            description = ""
 
     try:
         information = pag.find_element(By.ID, 'importantInformation_feature_div').text.strip()
     except NoSuchElementException:
-        information = None
+        information = ""
 
     try:
         documents = pag.find_element(By.ID, 'productDocuments_feature_div').text.strip()
     except NoSuchElementException:
-        documents = None
+        documents = ""
 
     try:
         tag = driver.find_element(By.XPATH, './/a[@class="nav-a nav-b"]').text.strip()
@@ -441,16 +481,18 @@ def coletaDetalhes(url, dominio, review=False):
         try:
             tag = driver.find_element(By.XPATH, './/ul/li[1]/span/a').text.strip()
         except NoSuchElementException:
-            tag = None
+            tag = ""
+
+    tabela = "\n".join((overview,features, details, description, information, documents))
 
     driver.close()
 
     return pd.DataFrame(data=[
         [dominio, asin, nome, marca, moeda, price, tag, overview, features, details, description, information,
          documents,
-         review]],
+         review, tabela]],
         columns=['dominio', 'asin', 'nome', 'marca', 'moeda', 'price', 'tag', 'overview', 'features',
-                 'details', 'description', 'information', 'documents', 'review'])
+                 'details', 'description', 'information', 'documents', 'review', 'tabela'])
 
 def coletaPerfil(link_perfil, dominio, coletaProdutos=False):
     driver2 = webdriver.Firefox(options=options)
@@ -512,8 +554,6 @@ def coletaElemento(palavra_chave, dominio):
 
     # INICIALIZE O DRIVER DO SELENIUM
 
-    driver = webdriver.Firefox(options=options)
-
     # LOGANDO PARA PODER ACESSAR PÁGINA DE QUEM AVALIOU O PRODUTO
     # login = input("Login")
     # senha = input("Senha")
@@ -527,6 +567,12 @@ def coletaElemento(palavra_chave, dominio):
     url = 'https://www.amazon' + dominio + '/s?k=' + palavra_chave + "&dc="
     # url = 'https://www.amazon.com.br/'
 
+    cursor.execute("SELECT site_id FROM site WHERE nome = 'amazon' AND dominio = '" + str(
+        dominio) + "' AND palavra_chave = '" + str(palavra_chave) + "' LIMIT 1;")
+
+    aux_site = cursor.fetchone()["site_id"]
+
+    driver = webdriver.Firefox(options=options)
     driver.get(url)
     try:
         driver.find_element(By.ID, "sp-cc-acceptall-link").click()
@@ -584,7 +630,7 @@ def coletaElemento(palavra_chave, dominio):
 
             #### DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
             moeda = item.find_elements('xpath', './/span[@class="a-price-symbol"]')
-            moeda = moeda[0] if moeda else None
+            moeda = moeda[0] if moeda else ""
             whole_price = item.find_elements('xpath', './/span[@class="a-price-whole"]')
             fraction_price = item.find_elements('xpath', './/span[@class="a-price-fraction"]')
             if whole_price and fraction_price:
@@ -603,7 +649,7 @@ def coletaElemento(palavra_chave, dominio):
                 ratings, ratings_num = 0.0, 0
 
             if (ratings >= 10):  #### CORRIGINDO POSSÍVEIS PROBLEMSA DE CONVERSÃO DE DECIMAIS
-                ratings = ratings / 10
+                ratings /= 10
 
             #### LINK DE CADA PRODUTO
             link = item.find_element('xpath', './/a[@class="a-link-normal s-no-outline"]').get_attribute("href")
@@ -611,10 +657,58 @@ def coletaElemento(palavra_chave, dominio):
             #### LINK DA IMAGEM -> DEPOIS BAIXAR O ARQUIVO
             img = item.find_element('class name', "s-image").get_attribute("src")
 
-            if not cursor.execute("SELECT a.produto_id, p.codigo FROM amazon AS a LEFT JOIN produto AS p ON p.codigo = '" + str(data_asin) + "';"):
-                auxDetalhes = coletaDetalhes(link, dominio)
+            # SALVANDO NO DATAFRAME
+            product = pd.concat(
+                [product, pd.DataFrame(data=[[dominio, data_asin, name, moeda, price, ratings, ratings_num, img, link]],
+                                       columns=['dominio', 'asin', 'name', 'moeda', 'price', 'ratings', 'ratings_num',
+                                                'img', 'link'])],
+                ignore_index=True)
+
+            try:
+                img = "" if not len(img) else img
+                auxSql = [name, data_asin, ratings, price, ratings_num, img, link]
+                auxSql.extend([aux_site])
+                cursor.execute("INSERT INTO produto (nome, codigo, nota, preco, avaliacoes, img, link, site_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE nota = '" + str(ratings) + "', avaliacoes = '" + str(ratings_num) + "';", auxSql)
+                mydb.commit()
+            except pymysql.Error as e:
+                print(e)
+                mydb.rollback()
+
+            auxDetalhes = pd.DataFrame()
+            if not cursor.execute("SELECT amazon_id FROM amazon WHERE produto_id IN (SELECT produto_id FROM produto WHERE codigo = '" + str(data_asin) + "');"):
+                try:
+                    auxDetalhes = coletaDetalhes(link, dominio)
+                    if not auxDetalhes.empty:
+                        product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
+                except:
+                    pass
+
+            cursor.execute("SELECT produto_id from produto WHERE codigo = '" + str(data_asin) + "' LIMIT 1;")
+            aux_produto = cursor.fetchone()["produto_id"]
+
+            if 'auxDetalhes' in locals():
                 if not auxDetalhes.empty:
-                    product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
+                    auxDetalhes.fillna("", inplace=True)
+                    auxSql = auxDetalhes.loc[:,
+                             ['tag', 'marca', 'overview', 'features', 'details', 'description', 'information',
+                              'documents', 'tabela']].values.flatten().tolist()
+                    auxSql.extend([aux_produto])
+                    cursor.execute(
+                        "INSERT INTO amazon (tag, marca, overview, features, details, description, information, documents, tabela, produto_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);",
+                        auxSql)
+                    mydb.commit()
+
+            if cursor.execute("SELECT produto_id FROM amazon WHERE produto_id = '" + str(aux_produto) + "' AND tabela NOT REGEXP 'leitelho|buttermilk';"):
+                try:
+                    cursor.execute(
+                        "UPDATE produto SET observacao = CONCAT_WS('\n', observacao, '- NÃO CONTÉM PALAVRA LEITELHO OU BUTTERMILK NA DESCRIÇÃO'), leitelho = FALSE WHERE produto_id = '" + str(
+                            aux_produto) + "';")
+                    mydb.commit()
+                    print("Produto não contém leitelho nem buttermilk na descrição")
+                    continue
+                except pymysql.Error as e:
+                    print(e)
+                    mydb.rollback()
 
             #### VERIFICA SE O MESMO PRODUTO TEVE INCLUSÃO DE ANÁLISES
             # cursor.execute("SELECT avaliacoes FROM produto WHERE codigo = '" + str(data_asin) + "';")
@@ -624,9 +718,9 @@ def coletaElemento(palavra_chave, dominio):
             if ratings_num > cursor.execute(
                     "SELECT * FROM avaliacao WHERE produto_id = (SELECT produto_id FROM produto WHERE codigo = '" + str(
                             data_asin) + "' LIMIT 1);"):
-                tempAvaliacoes = coletaReviewNew(data_asin, dominio)
-                if not tempAvaliacoes.empty:
-                    avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
+                # tempAvaliacoes = coletaReviewNew(data_asin, dominio)
+                link_reviews = item.find_element(By.XPATH, ".//div[@data-cy='reviews-block']//a[@class='a-link-normal s-underline-text s-underline-link-text s-link-style']").get_attribute("href").split("/ref")[0].replace("/dp/", "/product-reviews/")
+                tempAvaliacoes = coletaReviewNew(link_reviews, dominio)
                     # for link_perfil in tempAvaliacoes.link_perfil:
                     #     tempPerfil, tempReview, tempCompras = coletaPerfil(link_perfil, dominio, False)
                     #     if not tempPerfil.empty:
@@ -635,56 +729,63 @@ def coletaElemento(palavra_chave, dominio):
                     #         avaliacoes = pd.concat([avaliacoes, tempReview], ignore_index=True)
                     #     if not tempCompras.empty:
                     #         product_descr = pd.concat([product_descr, tempCompras], ignore_index=True)
+                if not tempAvaliacoes.empty:
+                    avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
+                    tempAvaliacoes.fillna("", inplace=True)
+                    for perfil in range(len(tempAvaliacoes)):
+                        try:
+                            if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(
+                                    tempAvaliacoes.loc[perfil]["profile_id"]) + "';"):
+                                auxSql = tempAvaliacoes.loc[perfil][
+                                    ["author_name", "author_img", "profile_id", "profile_link"]].to_list()
+                                auxSql.extend([aux_site])
+                                cursor.execute(
+                                    "INSERT INTO usuario (nome, img, codigo_perfil, link, site_id) VALUES (%s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE img = '" + str(
+                                        auxSql[1]) + "';", auxSql)
+                                mydb.commit()
+                                profiles = pd.concat([profiles, pd.DataFrame([auxSql],
+                                                                             columns=["author_name", "author_img",
+                                                                                      "profile_id", "profile_link",
+                                                                                      "site_id"])],
+                                                     ignore_index=True)
 
-            # SALVANDO NO DATAFRAME
-            product = pd.concat(
-                [product, pd.DataFrame(data=[[dominio, data_asin, name, moeda, price, ratings, ratings_num, img, link]],
-                                       columns=['dominio', 'asin', 'name', 'moeda', 'price', 'ratings', 'ratings_num',
-                                                'img', 'link'])],
-                ignore_index=True)
+                                print("row " + str(perfil) + "/" + str(len(tempAvaliacoes) - 1))
+                                if "" != tempAvaliacoes.loc[perfil]["author_img"]:
+                                    caminho = "results/profile_img/amazon" + tempAvaliacoes.loc[perfil][
+                                        "profile_id"] + ".jpeg"
+                                    if not os.path.exists(caminho):
+                                        try:
+                                            urllib.request.urlretrieve(
+                                                tempAvaliacoes.loc[perfil]["author_img"], caminho)
+                                        except HTTPError:
+                                            pass
+                        except pymysql.Error as e:
+                            print(e)
+                            mydb.rollback()
 
-            # profiles = pd.concat([profiles, tempAvaliacoes[["author_name", "author_img", "profile_id", "profile_link", "review_date"]].drop_duplicates()], ignore_index=True)
-
-            try:
-                ####VERIFICAR VAZIOS
-                img = "" if not len(img) else img
-                auxSql = [name, data_asin, ratings, price, ratings_num, img, link]
-                cursor.execute("INSERT INTO produto (nome, codigo, nota, preco, avaliacoes, img, link, site_id) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT site_id FROM site WHERE nome = 'amazon' AND dominio = '" + str(dominio) + "' AND palavra_chave = '" + str(palavra_chave) + "' LIMIT 1)) ON DUPLICATE KEY UPDATE nota = '" + str(ratings) + "', avaliacoes = '" + str(ratings_num) + "';", auxSql)
-                cursor.fetchone()
-
-                if 'auxDetalhes' in locals():
-                    if not auxDetalhes.empty:
-                        auxDetalhes.fillna("", inplace = True)
-                        auxSql = auxDetalhes.loc[:,['tag', 'marca', 'overview', 'features', 'details', 'description', 'information', 'documents']].values.flatten().tolist()
-
-                    cursor.execute("INSERT INTO amazon (tag, marca, overview, features, details, description, information, documents, produto_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, (SELECT produto_id FROM produto WHERE codigo = '" + str(data_asin) + "' LIMIT 1));", auxSql)
-                    cursor.fetchone()
-
-                if 'tempAvaliacoes' in locals():
-                    if not tempAvaliacoes.empty:
-
-                        for perfil in range(len(tempAvaliacoes)):
-                            if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(tempAvaliacoes.loc[perfil]["profile_id"]) + "';"):
-                                auxSql = tempAvaliacoes.loc[perfil][["author_name", "author_img", "profile_id", "profile_link"]]
-                                cursor.execute("INSERT INTO usuario (nome, img, codigo_perfil, link,  site_id) VALUES (%s, %s, %s, %s, (SELECT site_id FROM site WHERE nome = 'amazon' AND dominio = '" + str(
-                                        dominio) + "' LIMIT 1)) ON DUPLICATE KEY UPDATE img = '" + str(auxSql["author_img"]) + "';", auxSql.to_list())
-                                cursor.fetchone()
-                                profiles = pd.concat([profiles, auxSql.to_frame().T], ignore_index=True)
-
-                        tempAvaliacoes.fillna("", inplace = True)
-                        auxSql = tempAvaliacoes.loc[:,[
-                            "review_title", "review_text", "review_star", "review_img", "author_name", "review_date", "review_date",
-                             "review_link", "codigo_avaliacao", "profile_id"]].values.tolist()
-                        cursor.executemany('INSERT INTO avaliacao (titulo, texto, nota, img, autor, pais, dataavaliacao, link_avaliacao, codigo_avaliacao, produto_id, usuario_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, (SELECT produto_id FROM produto WHERE codigo = "' + str(data_asin) + '" LIMIT 1), (SELECT usuario_id FROM usuario WHERE codigo_perfil = " %s " LIMIT 1));', auxSql)
-
-                        cursor.fetchall()
-
-                mydb.commit()
-
-            except pymysql.Error as e:
-                print(e)
-                mydb.rollback()
-
+                    try:
+                        auxSql = tempAvaliacoes.loc[:, [
+                                                           "review_title", "review_text", "review_star",
+                                                           "review_img", "author_name",
+                                                           "review_date", "review_date",
+                                                           "review_link", "codigo_avaliacao",
+                                                           "profile_id"]].values.tolist()
+                        cursor.execute(
+                            'SELECT produto_id FROM produto WHERE codigo = "' + str(data_asin) + '" LIMIT 1;')
+                        # aux_produto = cursor.fetchone()["produto_id"]
+                        for i in range(len(auxSql)):
+                            cursor.execute('SELECT usuario_id FROM usuario WHERE codigo_perfil = "' + str(
+                                auxSql[i][9]) + '" LIMIT 1;')
+                            aux_profile = cursor.fetchone()["usuario_id"]
+                            auxSql2 = auxSql[i][0:9]
+                            auxSql2.extend([aux_produto, aux_profile])
+                            cursor.execute(
+                                'INSERT INTO avaliacao (titulo, texto, nota, img, autor, pais, dataavaliacao, link_avaliacao, codigo_avaliacao, produto_id, usuario_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);',
+                                auxSql2)
+                        mydb.commit()
+                    except pymysql.Error as e:
+                        print(e)
+                        mydb.rollback()
 
         # for i in product_asin:
         #    coletaReview(i)
@@ -712,25 +813,25 @@ def coletaElemento(palavra_chave, dominio):
     profiles.to_excel('results/amazon' + dominio + '_' + palavra_chave + '_(perfis)_' + today + '.xlsx', index=False)
 
     #### SALVANDO AS IMG DE PERFIL
-    print("Salvando imagens de perfil:")
-    for row in range(len(profiles)):
-        print("row "+str(row)+"/"+str(len(profiles)-1))
-        if "" != profiles.loc[row]["author_img"] and not "grey-pixel" in profiles.loc[row]["author_img"]:
-            urllib.request.urlretrieve(profiles.loc[row]["author_img"],
-                                       "results/profile_img/amazon_" + profiles.loc[row]["profile_id"] + ".jpeg")
-            # response = requests.get(profiles.loc[row]["author_img"])
-            # nome_img = "results/profile_img/amazon_" + profiles.loc[row]["profile_id"] + ".jpeg"
-            # # Verificar se a requisição foi bem-sucedida
-            # if response.status_code == 200:
-            #     # Abrir um arquivo em modo de escrita binária
-            #     with open(nome_img, 'wb') as file:
-            #         # Escrever o conteúdo da resposta no arquivo
-            #         for chunk in response.iter_content(1024):
-            #             file.write(chunk)
-            # else:
-            #     print(f'Falha ao baixar a imagem. Status code: {response.status_code}')
-        else:
-            print(profiles.loc[row]["profile_link"])
+    # print("Salvando imagens de perfil:")
+    # for row in range(len(profiles)):
+    #     print("row "+str(row)+"/"+str(len(profiles)-1))
+    #     if "" != profiles.loc[row]["author_img"] and not "grey-pixel" in profiles.loc[row]["author_img"]:
+    #         urllib.request.urlretrieve(profiles.loc[row]["author_img"],
+    #                                    "results/profile_img/amazon_" + profiles.loc[row]["profile_id"] + ".jpeg")
+    #         # response = requests.get(profiles.loc[row]["author_img"])
+    #         # nome_img = "results/profile_img/amazon_" + profiles.loc[row]["profile_id"] + ".jpeg"
+    #         # # Verificar se a requisição foi bem-sucedida
+    #         # if response.status_code == 200:
+    #         #     # Abrir um arquivo em modo de escrita binária
+    #         #     with open(nome_img, 'wb') as file:
+    #         #         # Escrever o conteúdo da resposta no arquivo
+    #         #         for chunk in response.iter_content(1024):
+    #         #             file.write(chunk)
+    #         # else:
+    #         #     print(f'Falha ao baixar a imagem. Status code: {response.status_code}')
+    #     else:
+    #         print(profiles.loc[row]["profile_link"])
     #
     # cursor.close()
     # mydb.close()
@@ -746,6 +847,8 @@ dominio = ".com"
 mydb = pymysql.connect(host="localhost", database='scraping2', user="root", passwd="", port = 3307,
                        cursorclass=pymysql.cursors.DictCursor)
 cursor = mydb.cursor()
+
+
 
 # coletaElemento(palavra_chave, dominio)
 
