@@ -23,6 +23,10 @@ import re
 
 locale.setlocale(locale.LC_ALL, 'pt_BR')
 
+
+import os
+os.chdir("/home/cachaco/Documentos/scraping")
+
 # Define the proxy server
 # global PROXY
 # PROXY = "50.207.199.80:80"
@@ -40,7 +44,7 @@ options.set_preference("general.useragent.override", "Mozilla/5.0 (Windows NT 10
 
 # INICIANDO CONEXÃO COM O BANCO DE DADOS
 global mydb, cursor
-mydb = pymysql.connect(host="localhost", database='scraping2', user="root", passwd="", port = 3307,
+mydb = pymysql.connect(host="localhost", database='scraping2', user="admin", passwd="Pgmc2@24", port = 3306,
                        cursorclass=pymysql.cursors.DictCursor)
 cursor = mydb.cursor()
 
@@ -285,7 +289,7 @@ def coletaReviewNew(link_review, dominio):
     # options.headless = True
     # driver2 = webdriver.Firefox(options=options)
 
-    driver2 = webdriver.Edge()
+    driver2 = webdriver.Firefox()
     driver2.get(link_review+"?sort=2") ####ORDENANDO POR MAIS RECENTE, PRA PODER ENCERRAR ASSIM QUE APARECER O PRIMEIRO COMENTÁRIO JÁ SALVO NO BANCO
 
     # INICIANDO LISTA PARA ARMAZENAR
@@ -483,7 +487,7 @@ def coletaReviewNew(link_review, dominio):
 
 def coletaDetalhes(link, dominio, review=False):
     driver2 = webdriver.Firefox(options = options)
-    # driver = webdriver.Edge()
+    # driver = webdriver.Firefox()
     driver2.get(link)
 
     try:
@@ -563,7 +567,7 @@ def coletaDetalhes(link, dominio, review=False):
 
 def coletaPerfil(link_perfil, dominio, coletaProdutos=False):
     # driver = webdriver.Firefox(options=options)
-    driver = webdriver.Edge()
+    driver = webdriver.Firefox()
     driver.get(link_perfil)
 
     try:
@@ -626,20 +630,20 @@ def coletaElemento(palavra_chave, dominio):
     aux_site = cursor.fetchone()["site_id"]
     # options.set_preference("network.cookie.cookieBehavior", 2)
 
-    # INICIANDO DATAFRAMES
+    #### INICIANDO DATAFRAMES
     product = pd.DataFrame()
     product_descr = pd.DataFrame()
     profiles = pd.DataFrame()
     avaliacoes = pd.DataFrame()
 
-    # INICIALIZE O DRIVER DO SELENIUM
+    ### INICIALIZE O DRIVER DO SELENIUM
     driver = webdriver.Firefox(options=options)
-    # driver = webdriver.Edge()
+    # driver = webdriver.Firefox()
     driver.get("https://iherb.com/search/?kw=" + palavra_chave)
 
     while True:
         time.sleep(2)
-        # CONFIGURAÇÃO PRA AGUARDAR A PAG CARREGAR ANTES DE TENTAR PEGAR OS RESULTS
+        ### CONFIGURAÇÃO PRA AGUARDAR A PAG CARREGAR ANTES DE TENTAR PEGAR OS RESULTS
         items = WebDriverWait(driver, 5).until(
             EC.presence_of_all_elements_located(
                 (By.XPATH, './/div[@class="product-cell-container col-xs-12 col-sm-12 col-md-8 col-lg-6"]')))
@@ -654,7 +658,7 @@ def coletaElemento(palavra_chave, dominio):
             codigo = item.find_element(By.XPATH, ".//a[@class='absolute-link product-link']").get_attribute(
                 "data-product-id")
 
-            # DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
+            ### DESMEMBRANDO PREÇO (INCLUIR MOEDA TBM?)
             moeda = item.find_element(By.XPATH, ".//a[@class='absolute-link product-link']").get_attribute(
                 "data-ga-discount-price")
             # whole_price = item.find_elements('xpath', './/span[@class="a-price-whole"]')
@@ -665,7 +669,10 @@ def coletaElemento(palavra_chave, dominio):
             #     price = 0.0
             price = item.find_element(By.XPATH, ".//a[@class='absolute-link product-link']").get_attribute(
                 "data-ga-discount-price")
+            price = float(price[2:]) ########## ASSUMINDO QUE A MOEDA É R$ - VERIFICAR
+        
 
+            ### NOTA E NUM DE AVALIAÇÕES (NÃO NECESSARIAMENTE SÃO ANÁLISES)
             try:
                 ratings = float(
                     item.find_element(By.XPATH, ".//div/a[@class='rating-count scroll-to']").get_attribute("title").split(
@@ -677,13 +684,13 @@ def coletaElemento(palavra_chave, dominio):
                 ratings = 0.0
                 ratings_num = 0
 
-            # LINK DE CADA PRODUTO
+            ### LINK DE CADA PRODUTO
             link = item.find_element('xpath', './/div/a[@class="absolute-link product-link"]').get_attribute("href")
 
-            # LINK DA IMAGEM -> DEPOIS BAIXAR O ARQUIVO
+            ### LINK DA IMAGEM -> DEPOIS BAIXAR O ARQUIVO
             img = item.find_element('xpath', ".//div[@class='product-image-wrapper']/span/img").get_attribute("src")
 
-                # SALVANDO NO DATAFRAME
+            ### SALVANDO NO DATAFRAME
             product = pd.concat(
                 [product,
                  pd.DataFrame(data=[[dominio, codigo, name, moeda, price, ratings, ratings_num, img, link]],
@@ -691,10 +698,8 @@ def coletaElemento(palavra_chave, dominio):
                                        'img', 'link'])],
                 ignore_index=True).fillna("")
 
+            ### SALVANDO NO BANCO
             try:
-                    ####VERIFICAR VAZIOS
-                img = "" if not len(img) else img
-                    ####VERIFICAR VAZIOS
                 auxSql = [name, codigo, ratings, price, ratings_num, img, link]
                 cursor.execute("SELECT site_id FROM site WHERE nome = 'iherb' AND palavra_chave = '" + str(palavra_chave) + "' LIMIT 1;")
                 auxSql.extend([aux_site])
@@ -705,11 +710,18 @@ def coletaElemento(palavra_chave, dominio):
                 mydb.rollback()
 
             end = time.time()
+            
+            cursor.execute(
+                "SELECT produto_id from produto WHERE codigo = '" + str(codigo) + "' LIMIT 1;")
+            aux_produto = cursor.fetchone()["produto_id"]
+            
 
+            ### TENTANDO ACESSAR PAG DO PRODUTO
             auxDetalhes = pd.DataFrame()
             if not cursor.execute("SELECT iherb_id FROM iherb WHERE produto_id IN (SELECT produto_id FROM produto WHERE codigo = '" + str(codigo) + "');"):
                 try:
-                    aux_tempo = random.randint(1,30) + 0 if (end-start) >= 120 else 120-(end-start)
+                    ### AGUARDANDO PRA EVITAR A VERIFICAÇÃO DE BOT
+                    aux_tempo = random.randint(10,15) + (0 if (end-start) > 125 else 125-(end-start))
                     print("Aguardando " + str(int(aux_tempo)) + "s para coletaDetalhes("+str(codigo)+")")
                     time.sleep(aux_tempo)
                     auxDetalhes = coletaDetalhes(link, dominio)
@@ -717,13 +729,11 @@ def coletaElemento(palavra_chave, dominio):
                         product_descr = pd.concat([product_descr, auxDetalhes], ignore_index=True)
                         print(link + " Descr ok")
                         auxDetalhes.fillna("", inplace=True)
+                        ### ARMAZENANDO NO BANCO
                         try:
                             auxSql = auxDetalhes.loc[:,
                                      ['tag', 'marca', 'descricao', 'uso', 'ingredientes', 'advertencia',
                                       'aviso', 'tabela']].values.flatten().tolist()
-                            cursor.execute(
-                                "SELECT produto_id from produto WHERE codigo = '" + str(codigo) + "' LIMIT 1;")
-                            aux_produto = cursor.fetchone()["produto_id"]
                             auxSql.extend([aux_produto])
                             cursor.execute(
                                 "INSERT INTO iherb (tag, marca, descricao, uso, ingredientes, advertencias, aviso, tabela, produto_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);",
@@ -733,21 +743,24 @@ def coletaElemento(palavra_chave, dominio):
                             print(e)
                             mydb.rollback()
                 except:
+                    print(link + " Verificar")
                     pass
-
+                
+                ### ATUALIZANDO PRODUTO CASO ELE NÃO CONTENHA A PALAVRA LEITELHO OU BUTTERMILK NA SUA PÁGINA
                 if cursor.execute("SELECT produto_id FROM iherb WHERE produto_id = '"+str(aux_produto)+"' AND tabela NOT REGEXP 'leitelho|buttermilk';"):
                     try:
                         cursor.execute("UPDATE produto SET observacao = CONCAT_WS('\n', observacao, '- NÃO CONTÉM PALAVRA LEITELHO OU BUTTERMILK NA DESCRIÇÃO'), leitelho = FALSE WHERE produto_id = '" + str(aux_produto) + "';")
                         mydb.commit()
                         print("Produto não contém leitelho nem buttermilk na descrição")
-                        continue
+                        continue ### SE NÃO TIVER A PALAVRA, NÃO VAI NEM PEGAR AS AVALIAÇÕES
                     except pymysql.Error as e:
                         print(e)
                         mydb.rollback()
             start = time.time()
 
+            ### VERIFICA SE O PRODUTO TEM A PALAVRA-CHAVE OU SE FOI POSSÍVEL ACESSAR A PAG DELE
             cursor.execute("SELECT leitelho FROM produto WHERE codigo = '" + str(codigo) + "';")
-            if not cursor.fetchone()["leitelho"]:
+            if not cursor.fetchone()["leitelho"] or auxDetalhes.empty:
                 continue
 
             #### ACESSANDO PÁGINA DE AVALIAÇÃO DO PRODUTO (SE HOUVER - SE FOR O CASO DE TER AVALIAÇÃO MAS SEM COMENTÁRIO, VAI SÓ ABRIR E FECHAR)
@@ -765,6 +778,7 @@ def coletaElemento(palavra_chave, dominio):
                 if not tempAvaliacoes.empty:
                     avaliacoes = pd.concat([avaliacoes, tempAvaliacoes], ignore_index=True)
                     tempAvaliacoes.fillna("", inplace=True)
+                    ### SALVANDO NO BANCO
                     for perfil in range(len(tempAvaliacoes)):
                         try:
                             if not cursor.execute("SELECT * FROM usuario WHERE codigo_perfil = '" + str(
@@ -796,7 +810,8 @@ def coletaElemento(palavra_chave, dominio):
                         except pymysql.Error as e:
                             print(e)
                             mydb.rollback()
-
+                            
+                    ### SALVANDO NO BANCO
                     try:
                         auxSql = tempAvaliacoes.loc[:, [
                                                            "review_title", "review_text", "review_star",
@@ -806,7 +821,7 @@ def coletaElemento(palavra_chave, dominio):
                                                            "profile_id"]].values.tolist()
                         cursor.execute(
                             'SELECT produto_id FROM produto WHERE codigo = "' + str(codigo) + '" LIMIT 1;')
-                        # aux_produto = cursor.fetchone()["produto_id"]
+                        aux_produto = cursor.fetchone()["produto_id"]
                         for i in range(len(auxSql)):
                             cursor.execute('SELECT usuario_id FROM usuario WHERE codigo_perfil = "' + str(
                                 auxSql[i][9]) + '" LIMIT 1;')
@@ -820,10 +835,6 @@ def coletaElemento(palavra_chave, dominio):
                     except pymysql.Error as e:
                         print(e)
                         mydb.rollback()
-
-
-        # for i in product_codigo:
-        #    coletaReview(i)
 
         # IR PRA PRÓXIMA PÁGINA (SE HOUVER)
         try:
@@ -886,7 +897,7 @@ def coletaProdutoNew():
 
     # INICIALIZE O DRIVER DO SELENIUM
     driver = webdriver.Firefox(options=options)
-    # driver = webdriver.Edge()
+    # driver = webdriver.Firefox()
     driver.get("https://iherb.com/search/?kw=" + palavra_chave)
     cursor.execute("SELECT site_id FROM site WHERE nome = 'iherb' AND palavra_chave = '" + str(palavra_chave) + "';")
     aux_site = cursor.fetchone()["site_id"]
