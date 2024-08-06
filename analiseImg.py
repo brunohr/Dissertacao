@@ -47,13 +47,10 @@ def processamentoImgs(url):
         start = datetime.now()
         # print(count)
 
-        if 'amazon' in profiles_img[i]:
-            auxId = "amzn1.account." + profiles_img[i].split("_")[1].split(".")[0]
-        elif 'iherb' in profiles_img[i]:
-            auxId = profiles_img[i].split("_")[1]
+        auxId = profiles_img[i].split("_")[1].split(".")[0]
+
         try:
-            cursor.execute("SELECT usuario_id FROM usuario WHERE codigo_perfil = %s;",
-                           (auxId.replace(".png", "").replace(".jpg", "").replace(".jpeg", "")))
+            cursor.execute("SELECT usuario_id FROM usuario WHERE codigo_perfil = %s;", auxId)
             auxId = cursor.fetchone()['usuario_id']
         except TypeError:
             continue
@@ -80,11 +77,9 @@ def processamentoImgs(url):
                     print(e)
                     mydb.rollback()
         except ValueError:
-            print(print(str(count) + ' VALUE ERROR ' + str(datetime.now() - start)))
+            print(print(str(i) + ' VALUE ERROR ' + str(datetime.now() - start)))
         #
-        print(str(count) + ' ' + str(datetime.now() - start))
-
-        count+=1
+        print(str(i) + ' ' + str(datetime.now() - start))
 
 profiles_img = [f for f in listdir('results/profile_img') if isfile(join('results/profile_img', f))]
 resultadosImg = processamentoImgs(profiles_img)
