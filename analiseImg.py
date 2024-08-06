@@ -28,7 +28,6 @@ cursor = mydb.cursor()
 #     return img
 
 def processamentoImgs(url):
-    count = 0
     backends = [
         'opencv',
         'ssd',
@@ -43,7 +42,8 @@ def processamentoImgs(url):
     ]
     auxResults = []
     results = []
-    for i in range(0, len(profiles_img)):
+    count = 0
+    for i in range(len(profiles_img)):
         start = datetime.now()
         # print(count)
 
@@ -74,7 +74,7 @@ def processamentoImgs(url):
             if len(aux):
                 try:
                     results.append([profiles_img[i], aux[0]['dominant_gender'], aux[0]['age'], aux[0]['dominant_race'], auxId])
-                    cursor.execute("INSERT INTO resultadoimg (sexo, idade, raca, usuario_id) VALUES (%s, %s, %s, %s);", results[i][1:])
+                    cursor.execute("INSERT INTO resultadoimg (img, sexo, idade, raca, usuario_id) VALUES (%s, %s, %s, %s, %s);", results[-1])
                     mydb.commit()
                 except pymysql.Error as e:
                     print(e)
