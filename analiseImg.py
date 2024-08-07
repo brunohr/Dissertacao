@@ -42,10 +42,8 @@ def processamentoImgs(url):
     ]
     auxResults = []
     results = []
-    count = 0
     for i in range(len(profiles_img)):
         start = datetime.now()
-        # print(count)
 
         auxId = profiles_img[i].split("_")[1].split(".")[0]
 
@@ -73,15 +71,15 @@ def processamentoImgs(url):
                     results.append([profiles_img[i], aux[0]['dominant_gender'], aux[0]['age'], aux[0]['dominant_race'], auxId])
                     cursor.execute("INSERT INTO resultadoimg (img, sexo, idade, raca, usuario_id) VALUES (%s, %s, %s, %s, %s);", results[-1])
                     mydb.commit()
+                    print(str(i) + ' ' + str(datetime.now() - start))
                 except pymysql.Error as e:
                     print(e)
                     mydb.rollback()
         except ValueError:
             print(print(str(i) + ' VALUE ERROR ' + str(datetime.now() - start)))
-        #
-        print(str(i) + ' ' + str(datetime.now() - start))
 
 profiles_img = [f for f in listdir('results/profile_img') if isfile(join('results/profile_img', f))]
+
 resultadosImg = processamentoImgs(profiles_img)
 
 
