@@ -248,12 +248,15 @@ def coletaReviewNew(link_reviews, dominio):
     data_asin = link_reviews.split("/product-reviews/")[1]
     ### link_reviews
     # driver2.get(link_reviews+ '/ref=cm_cr_dp_d_show_all_btm?ie=UTF8&reviewerType=all_reviews')
-    driver2.get(link_reviews.replace("/product-reviews/", "/dp/"))
+    # driver2.get(link_reviews.replace("/product-reviews/", "/dp/"))
+
+    driver2.get(link_reviews)
 
     product_review = []
     try:
-        WebDriverWait(driver2, 3).until(
-            EC.presence_of_element_located((By.XPATH, ".//a[@data-hook='see-all-reviews-link-foot']"))).click()
+        # WebDriverWait(driver2, 3).until(
+        #     EC.presence_of_element_located((By.XPATH, ".//a[@data-hook='see-all-reviews-link-foot']"))).click()
+
 
         try:
             driver2.find_element(By.ID, "sp-cc-acceptall-link").click()
@@ -266,6 +269,7 @@ def coletaReviewNew(link_reviews, dominio):
 
         # time.sleep(3)
 
+
         auxAnalises = int(
             driver2.find_element(By.XPATH, ".//div[@data-hook='cr-filter-info-review-rating-count']").text.split(", ")[
                 1].split(" ")[0].replace(",", "").replace(".", ""))
@@ -275,6 +279,8 @@ def coletaReviewNew(link_reviews, dominio):
 
         flag = True
         if auxAnalises > analisesSql:
+            driver2.refresh()
+
         #### PEGANDO CADA CARD DE AVALIAÇÃO
             while flag:
                 # time.sleep(1)
@@ -386,7 +392,7 @@ def coletaReviewNew(link_reviews, dominio):
 
         print(link_reviews, str(len(product_review)) + "+" + str(analisesSql) + " / " + str(auxAnalises))
 
-    except TimeoutException:
+    except:
         pass
 
     driver2.close()
@@ -394,7 +400,6 @@ def coletaReviewNew(link_reviews, dominio):
     return pd.DataFrame(data=product_review,
                         columns=["dominio", "review_link", "review_title", "review_text", "review_star", "review_img",
                                  "author_name", "author_img", "review_date", "link_reviews", "profile_link", "profile_id", "link_produto", "codigo_produto", "codigo_avaliacao"]).fillna("")
-
 
 def coletaDetalhes(url, dominio, review=False):
     driver = webdriver.Firefox(options=options)
